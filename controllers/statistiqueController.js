@@ -3,31 +3,99 @@ const { pool } = require('../config/database');
 // Statistiques du dashboard
 const getDashboardStats = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    // Filtrer selon le rôle
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
+    
     // Total des doléances
-    const [totalResult] = await pool.execute('SELECT COUNT(*) as total FROM doleances');
+    const [totalResult] = await pool.execute(
+      `SELECT COUNT(*) as total FROM doleances WHERE 1=1 ${directionFilter}`,
+      params
+    );
     
     // Doléances en cours (statuts 1-4)
     const [enCoursResult] = await pool.execute(
-      'SELECT COUNT(*) as enCours FROM doleances WHERE id_statut IN (1,2,3,4)'
+      `SELECT COUNT(*) as enCours FROM doleances WHERE id_statut IN (1,2,3,4) ${directionFilter}`,
+      params
     );
     
     // Doléances résolues (statuts 5-6)
     const [resoluesResult] = await pool.execute(
-      'SELECT COUNT(*) as resolues FROM doleances WHERE id_statut IN (5,6)'
+      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut IN (5,6) ${directionFilter}`,
+      params
     );
     
     // Doléances urgentes
     const [urgentesResult] = await pool.execute(
-      'SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4'
+      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4 ${directionFilter}`,
+      params
     );
+    
+    // Données supplémentaires selon le rôle
+    let additionalData = {};
+    
+    if (userRole === 'administrateur_systeme' || userRole === 'agent_central') {
+      const [directionsCount] = await pool.execute('SELECT COUNT(*) as total FROM directions');
+      const [agentsCount] = await pool.execute(
+        'SELECT COUNT(*) as total FROM utilisateurs WHERE id_role IN (2,3,4) AND actif = 1'
+      );
+      additionalData = {
+        totalDirections: directionsCount[0].total || 0,
+        totalAgents: agentsCount[0].total || 0
+      };
+    }
+    
+    if (userRole === 'agent_central') {
+      const [enAttenteResult] = await pool.execute(
+        `SELECT COUNT(*) as enAttente FROM doleances WHERE id_statut = 1`
+      );
+      additionalData.enAttente = enAttenteResult[0].enAttente || 0;
+    }
+    
+    if (userRole === 'directeur' || userRole === 'chef_service') {
+      if (userDirectionId) {
+        const [servicesCount] = await pool.execute(
+          'SELECT COUNT(*) as total FROM services WHERE id_direction = ?',
+          [userDirectionId]
+        );
+        const [agentsCount] = await pool.execute(
+          'SELECT COUNT(*) as total FROM utilisateurs WHERE id_direction = ? AND actif = 1',
+          [userDirectionId]
+        );
+        additionalData = {
+          totalServices: servicesCount[0].total || 0,
+          totalAgents: agentsCount[0].total || 0
+        };
+      }
+    }
+    
+    if (userRole === 'agent') {
+      const [doleancesTraitees] = await pool.execute(
+        'SELECT COUNT(*) as total FROM doleances WHERE id_agent = ? AND id_statut IN (5,6)',
+        [userId]
+      );
+      additionalData.doleancesTraitees = doleancesTraitees[0].total || 0;
+    }
     
     res.json({
       success: true,
       data: {
-        total: totalResult[0].total,
-        enCours: enCoursResult[0].enCours,
-        resolues: resoluesResult[0].resolues,
-        urgentes: urgentesResult[0].urgentes
+        total: totalResult[0].total || 0,
+        enCours: enCoursResult[0].enCours || 0,
+        resolues: resoluesResult[0].resolues || 0,
+        urgentes: urgentesResult[0].urgentes || 0,
+        ...additionalData
       }
     });
   } catch (error) {
@@ -39,29 +107,57 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-// Statistiques par catégorie
+// Statistiques par catégorie (version corrigée sans sous-requête problématique)
 const getStatsByCategorie = async (req, res) => {
   try {
     const { periode = 'month' } = req.query;
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND d.id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
     
     let dateCondition = '';
     if (periode === 'week') {
-      dateCondition = 'AND date_creation >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
     } else if (periode === 'month') {
-      dateCondition = 'AND date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
     } else if (periode === 'year') {
-      dateCondition = 'AND date_creation >= DATE_SUB(NOW(), INTERVAL 365 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 365 DAY)';
     }
     
+    // Récupérer d'abord le total
+    let totalQuery = 'SELECT COUNT(*) as total FROM doleances WHERE 1=1';
+    let totalParams = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        totalQuery += ' AND id_direction = ?';
+        totalParams.push(userDirectionId);
+      }
+    }
+    
+    const [totalResult] = await pool.execute(totalQuery, totalParams);
+    const totalDoleances = totalResult[0].total || 1;
+    
+    // Récupérer les statistiques par catégorie
     const [stats] = await pool.execute(
       `SELECT c.id_categorie, c.nom_categorie, c.couleur, 
               COUNT(d.id_doleance) as count,
-              ROUND(COUNT(d.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances WHERE 1=1 ${dateCondition}), 0), 2) as percentage
+              ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) as percentage
        FROM categories_doleance c
-       LEFT JOIN doleances d ON c.id_categorie = d.id_categorie ${dateCondition ? `AND ${dateCondition.substring(4)}` : ''}
+       LEFT JOIN doleances d ON c.id_categorie = d.id_categorie ${dateCondition} ${directionFilter}
        GROUP BY c.id_categorie
        ORDER BY count DESC`,
-      []
+      [...params, totalDoleances]
     );
     
     res.json({ success: true, data: stats });
@@ -77,15 +173,31 @@ const getStatsByCategorie = async (req, res) => {
 // Statistiques par direction
 const getStatsByDirection = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur') {
+      if (userDirectionId) {
+        directionFilter = ' AND do.id_direction = ?';
+        params.push(userDirectionId);
+      } else {
+        return res.json({ success: true, data: [] });
+      }
+    }
+    
     const [stats] = await pool.execute(
       `SELECT d.id_direction, d.nom_direction, 
               COUNT(do.id_doleance) as count,
               ROUND(COUNT(do.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances), 0), 2) as percentage
        FROM directions d
-       LEFT JOIN doleances do ON d.id_direction = do.id_direction
+       LEFT JOIN doleances do ON d.id_direction = do.id_direction ${directionFilter}
        GROUP BY d.id_direction
        ORDER BY count DESC`,
-      []
+      params
     );
     
     res.json({ success: true, data: stats });
@@ -101,15 +213,29 @@ const getStatsByDirection = async (req, res) => {
 // Statistiques par statut
 const getStatsByStatut = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND d.id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
+    
     const [stats] = await pool.execute(
       `SELECT s.id_statut, s.nom_statut, s.couleur, 
               COUNT(d.id_doleance) as count,
               ROUND(COUNT(d.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances), 0), 2) as percentage
        FROM statuts s
-       LEFT JOIN doleances d ON s.id_statut = d.id_statut
+       LEFT JOIN doleances d ON s.id_statut = d.id_statut ${directionFilter}
        GROUP BY s.id_statut
        ORDER BY s.ordre`,
-      []
+      params
     );
     
     res.json({ success: true, data: stats });
@@ -125,15 +251,29 @@ const getStatsByStatut = async (req, res) => {
 // Statistiques par priorité
 const getStatsByPriorite = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND d.id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
+    
     const [stats] = await pool.execute(
       `SELECT p.id_priorite, p.nom_priorite, p.niveau, p.couleur,
               COUNT(d.id_doleance) as count,
-              AVG(DATEDIFF(COALESCE(d.date_resolution, NOW()), d.date_creation)) as delai_moyen_jours
+              AVG(TIMESTAMPDIFF(HOUR, d.date_creation, COALESCE(d.date_resolution, NOW()))) as delai_moyen_heures
        FROM priorites p
-       LEFT JOIN doleances d ON p.id_priorite = d.id_priorite
+       LEFT JOIN doleances d ON p.id_priorite = d.id_priorite ${directionFilter}
        GROUP BY p.id_priorite
        ORDER BY p.niveau`,
-      []
+      params
     );
     
     res.json({ success: true, data: stats });
@@ -150,23 +290,35 @@ const getStatsByPriorite = async (req, res) => {
 const getEvolutionTemporelle = async (req, res) => {
   try {
     const { periode = 'month', nb = 12 } = req.query;
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
     
     let groupBy = '';
-    let dateFormat = '';
+    let intervalUnit = '';
     
     if (periode === 'day') {
       groupBy = 'DATE(date_creation)';
-      dateFormat = '%Y-%m-%d';
+      intervalUnit = 'DAY';
     } else if (periode === 'week') {
-      groupBy = 'YEARWEEK(date_creation)';
-      dateFormat = '%Y-%m-%d';
-    } else if (periode === 'month') {
-      groupBy = 'DATE_FORMAT(date_creation, "%Y-%m")';
-      dateFormat = '%Y-%m';
+      groupBy = 'DATE_FORMAT(date_creation, "%Y-%u")';
+      intervalUnit = 'WEEK';
     } else {
       groupBy = 'DATE_FORMAT(date_creation, "%Y-%m")';
-      dateFormat = '%Y-%m';
+      intervalUnit = 'MONTH';
     }
+    
+    params.unshift(parseInt(nb));
     
     const [stats] = await pool.execute(
       `SELECT ${groupBy} as periode,
@@ -174,11 +326,10 @@ const getEvolutionTemporelle = async (req, res) => {
               SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
               SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
        FROM doleances
-       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL ? ${periode === 'month' ? 'MONTH' : (periode === 'week' ? 'WEEK' : 'DAY')})
-       GROUP BY ${groupBy}
-       ORDER BY periode DESC
-       LIMIT ?`,
-      [parseInt(nb), parseInt(nb)]
+       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL ? ${intervalUnit}) ${directionFilter}
+       GROUP BY periode
+       ORDER BY periode ASC`,
+      params
     );
     
     res.json({ success: true, data: stats });
@@ -191,9 +342,33 @@ const getEvolutionTemporelle = async (req, res) => {
   }
 };
 
+// Statistiques pour l'évolution (alias)
+const getEvolutionStats = async (req, res) => {
+  return getEvolutionTemporelle(req, res);
+};
+
+// Statistiques par catégorie (alias)
+const getCategoriesStats = async (req, res) => {
+  return getStatsByCategorie(req, res);
+};
+
 // Temps de traitement moyen
 const getTempsTraitementMoyen = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
+    
     const [stats] = await pool.execute(
       `SELECT 
         AVG(TIMESTAMPDIFF(HOUR, date_creation, COALESCE(date_resolution, NOW()))) as moyen_heures,
@@ -204,11 +379,14 @@ const getTempsTraitementMoyen = async (req, res) => {
         AVG(CASE WHEN id_priorite = 3 THEN TIMESTAMPDIFF(HOUR, date_creation, COALESCE(date_resolution, NOW())) END) as haute_heures,
         AVG(CASE WHEN id_priorite = 4 THEN TIMESTAMPDIFF(HOUR, date_creation, COALESCE(date_resolution, NOW())) END) as urgente_heures
        FROM doleances
-       WHERE id_statut IN (5,6)`,
-      []
+       WHERE id_statut IN (5,6) ${directionFilter}`,
+      params
     );
     
-    res.json({ success: true, data: stats[0] });
+    res.json({ success: true, data: stats[0] || {
+      moyen_heures: 0, min_heures: 0, max_heures: 0,
+      basse_heures: 0, moyenne_heures: 0, haute_heures: 0, urgente_heures: 0
+    } });
   } catch (error) {
     console.error('Get average processing time error:', error);
     res.status(500).json({ 
@@ -222,28 +400,44 @@ const getTempsTraitementMoyen = async (req, res) => {
 const getPerformanceAgents = async (req, res) => {
   try {
     const { periode = 'month' } = req.query;
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur') {
+      if (userDirectionId) {
+        directionFilter = ' AND d.id_direction = ?';
+        params.push(userDirectionId);
+      } else {
+        return res.json({ success: true, data: [] });
+      }
+    }
     
     let dateCondition = '';
     if (periode === 'week') {
-      dateCondition = 'AND date_assignation >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
     } else if (periode === 'month') {
-      dateCondition = 'AND date_assignation >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 30 DAY)';
     } else if (periode === 'year') {
-      dateCondition = 'AND date_assignation >= DATE_SUB(NOW(), INTERVAL 365 DAY)';
+      dateCondition = 'AND d.date_creation >= DATE_SUB(NOW(), INTERVAL 365 DAY)';
     }
     
     const [stats] = await pool.execute(
       `SELECT u.id_utilisateur, u.nom, u.prenom,
-              COUNT(DISTINCT a.id_doleance) as doleances_traitees,
-              COUNT(DISTINCT CASE WHEN d.id_statut IN (5,6) THEN d.id_doleance END) as doleances_resolues,
-              ROUND(AVG(TIMESTAMPDIFF(HOUR, a.date_assignation, COALESCE(d.date_resolution, NOW())))) as temps_moyen_heures
+              COUNT(d.id_doleance) as doleances_traitees,
+              COUNT(CASE WHEN d.id_statut IN (5,6) THEN 1 END) as doleances_resolues,
+              ROUND(AVG(CASE WHEN d.id_statut IN (5,6) THEN TIMESTAMPDIFF(HOUR, d.date_creation, d.date_mise_a_jour) END)) as temps_moyen_heures
        FROM utilisateurs u
-       JOIN assignations a ON u.id_utilisateur = a.id_utilisateur
-       JOIN doleances d ON a.id_doleance = d.id_doleance
-       WHERE u.id_role = 2 ${dateCondition}
+       JOIN doleances d ON u.id_utilisateur = d.id_agent
+       WHERE u.id_role IN (2,3) ${dateCondition} ${directionFilter}
        GROUP BY u.id_utilisateur
-       ORDER BY doleances_resolues DESC`,
-      []
+       HAVING doleances_traitees > 0
+       ORDER BY doleances_resolues DESC
+       LIMIT 10`,
+      params
     );
     
     res.json({ success: true, data: stats });
@@ -260,14 +454,13 @@ const getPerformanceAgents = async (req, res) => {
 const getStatsByQuartier = async (req, res) => {
   try {
     const [stats] = await pool.execute(
-      `SELECT a.id_arrondissement, a.nom_arrondissement,
-              q.id_quartier, q.nom_quartier,
+      `SELECT q.id_quartier, q.nom_quartier,
               COUNT(d.id_doleance) as count
-       FROM arrondissements a
-       LEFT JOIN quartiers q ON a.id_arrondissement = q.id_arrondissement
+       FROM quartiers q
        LEFT JOIN doleances d ON q.id_quartier = d.id_quartier
        GROUP BY q.id_quartier
-       ORDER BY count DESC`,
+       ORDER BY count DESC
+       LIMIT 20`,
       []
     );
     
@@ -284,19 +477,34 @@ const getStatsByQuartier = async (req, res) => {
 // Taux de satisfaction
 const getTauxSatisfaction = async (req, res) => {
   try {
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      }
+    }
+    
     const [stats] = await pool.execute(
       `SELECT 
         COUNT(*) as total_avis,
         ROUND(AVG(satisfaction_note), 2) as note_moyenne,
         SUM(CASE WHEN satisfaction_note >= 4 THEN 1 ELSE 0 END) as satisfaits,
         SUM(CASE WHEN satisfaction_note <= 2 THEN 1 ELSE 0 END) as insatisfaits,
-        ROUND(SUM(CASE WHEN satisfaction_note >= 4 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as taux_satisfaction
+        ROUND(SUM(CASE WHEN satisfaction_note >= 4 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) as taux_satisfaction
        FROM doleances
-       WHERE satisfaction_note IS NOT NULL`,
-      []
+       WHERE satisfaction_note IS NOT NULL ${directionFilter}`,
+      params
     );
     
-    res.json({ success: true, data: stats[0] });
+    const result = stats[0] || { total_avis: 0, note_moyenne: 0, satisfaits: 0, insatisfaits: 0, taux_satisfaction: 0 };
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error('Get satisfaction rate error:', error);
     res.status(500).json({ 
@@ -311,10 +519,23 @@ const exportStats = async (req, res) => {
   try {
     const { format = 'json' } = req.params;
     const { date_debut, date_fin } = req.body;
+    const userId = req.user.id_utilisateur;
+    const userRole = req.user.nom_role;
+    const userDirectionId = req.user.id_direction;
+    
+    let directionFilter = '';
+    let params = [];
+    
+    if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur') {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      } else {
+        return res.status(403).json({ success: false, message: 'Accès non autorisé' });
+      }
+    }
     
     let dateCondition = '';
-    const params = [];
-    
     if (date_debut) {
       dateCondition += ' AND date_creation >= ?';
       params.push(date_debut);
@@ -332,7 +553,7 @@ const exportStats = async (req, res) => {
         SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
         SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
        FROM doleances
-       WHERE 1=1 ${dateCondition}
+       WHERE 1=1 ${dateCondition} ${directionFilter}
        GROUP BY DATE(date_creation)
        ORDER BY date DESC`,
       params
@@ -369,6 +590,8 @@ module.exports = {
   getStatsByStatut,
   getStatsByPriorite,
   getEvolutionTemporelle,
+  getEvolutionStats,
+  getCategoriesStats,
   getTempsTraitementMoyen,
   getPerformanceAgents,
   getStatsByQuartier,

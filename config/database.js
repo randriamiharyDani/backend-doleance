@@ -25,8 +25,10 @@ const insertInitialData = async () => {
       (1, 'citoyen', 'Utilisateur standard - peut déposer des doléances'),
       (2, 'agent', 'Agent de traitement - peut traiter les doléances'),
       (3, 'directeur', 'Directeur de direction - supervise les traitements'),
-      (4, 'administrateur', 'Administrateur système - gère tout le système'),
-      (5, 'maire', 'Maire - validation finale et supervision')
+      (4, 'administrateur_systeme', 'Administrateur système - gère tout le système'),
+      (5, 'maire', 'Maire - validation finale et supervision'),
+      (6, 'agent_central', 'Agent central - transfert des doléances'),
+      (7, 'secretaire_general', 'Secrétaire général - coordination')
     `);
     
     // Insertion des statuts
@@ -103,7 +105,7 @@ const insertInitialData = async () => {
     // Insertion de l'administrateur par défaut (mot de passe: admin123)
     const hashedPassword = await bcrypt.hash('admin123', 10);
     await promisePool.execute(`
-      INSERT IGNORE INTO utilisateurs (id_utilisateur, id_role, nom, prenom, email, mot_de_passe, actif) VALUES
+      INSERT IGNORE INTO utilisateurs (id_utilisateur, id_role, nom, prenom, email, password, actif) VALUES
       (1, 4, 'Admin', 'Système', 'admin@mairie.com', ?, 1)
     `, [hashedPassword]);
     
@@ -138,7 +140,7 @@ const createTables = async () => {
       nom VARCHAR(100) NOT NULL,
       prenom VARCHAR(100) NOT NULL,
       email VARCHAR(150) UNIQUE NOT NULL,
-      mot_de_passe TEXT NOT NULL,
+      password TEXT NOT NULL,
       telephone VARCHAR(30),
       actif BOOLEAN DEFAULT TRUE,
       derniere_connexion TIMESTAMP NULL,
@@ -214,6 +216,8 @@ const createTables = async () => {
       date_resolution TIMESTAMP NULL,
       satisfaction_note INT CHECK (satisfaction_note BETWEEN 1 AND 5),
       satisfaction_commentaire TEXT,
+      lieu_exact TEXT,
+      suggestions TEXT,
       FOREIGN KEY (id_citoyen) REFERENCES citoyens(id_citoyen),
       FOREIGN KEY (id_categorie) REFERENCES categories_doleance(id_categorie),
       FOREIGN KEY (id_statut) REFERENCES statuts(id_statut),

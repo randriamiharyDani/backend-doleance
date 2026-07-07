@@ -1,10 +1,12 @@
+// controllers/userController.js - Version corrigée avec gestion de la table transferts
+
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 
-// Récupérer tous les utilisateurs (plus de restriction sur les citoyens)
+// Récupérer tous les utilisateurs
 const getUsers = async (req, res) => {
   try {
-    console.log('📋 Récupération des utilisateurs par:', req.user?.email, 'Rôle:', req.user?.role_nom);
+    console.log('📋 Récupération des utilisateurs');
     
     const [users] = await pool.execute(
       `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.telephone, u.actif, u.date_creation,
@@ -21,7 +23,7 @@ const getUsers = async (req, res) => {
     console.error('Get users error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Erreur lors du chargement des utilisateurs' 
+      message: 'Erreur lors du chargement des utilisateurs: ' + error.message 
     });
   }
 };
@@ -54,17 +56,17 @@ const getUserById = async (req, res) => {
     console.error('Get user by id error:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Erreur lors du chargement' 
+      message: 'Erreur lors du chargement: ' + error.message 
     });
   }
 };
 
-// Créer un utilisateur (admin uniquement)
+// CRÉER un utilisateur
 const createUser = async (req, res) => {
   try {
     const { nom, prenom, email, password, telephone, id_role, id_direction } = req.body;
     
-    console.log('📝 Création utilisateur:', { nom, prenom, email, id_role, id_direction });
+    console.log('📝 Création utilisateur - Données reçues:', { nom, prenom, email, id_role, id_direction, password: password ? '***' : 'non fourni' });
     
     if (!nom || !prenom || !email || !password) {
       return res.status(400).json({ 
@@ -87,21 +89,32 @@ const createUser = async (req, res) => {
     
     const hashedPassword = await bcrypt.hash(password, 10);
     
+    const [columns] = await pool.execute(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'utilisateurs' 
+      AND (COLUMN_NAME = 'mot_de_passe' OR COLUMN_NAME = 'password')
+    `);
+    
+    const passwordColumn = columns[0]?.COLUMN_NAME || 'password';
+    console.log('🔐 Colonne mot de passe utilisée:', passwordColumn);
+    
     const [result] = await pool.execute(
-      `INSERT INTO utilisateurs (nom, prenom, email, mot_de_passe, telephone, id_role, id_direction, actif) 
+      `INSERT INTO utilisateurs (nom, prenom, email, ${passwordColumn}, telephone, id_role, id_direction, actif) 
        VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
       [nom, prenom, email, hashedPassword, telephone || null, id_role || 2, id_direction || null]
     );
     
-    console.log('✅ Utilisateur créé avec ID:', result.insertId);
+    console.log('✅ Utilisateur créé avec succès, ID:', result.insertId);
     
     res.status(201).json({ 
       success: true, 
       message: 'Utilisateur créé avec succès',
-      data: { id: result.insertId }
+      data: { id_utilisateur: result.insertId }
     });
+    
   } catch (error) {
-    console.error('Create user error:', error);
+    console.error('❌ Create user error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Erreur lors de la création: ' + error.message 
@@ -109,7 +122,7 @@ const createUser = async (req, res) => {
   }
 };
 
-// MODIFIER un utilisateur (admin uniquement)
+// MODIFIER un utilisateur
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -118,7 +131,7 @@ const updateUser = async (req, res) => {
     console.log('✏️ Mise à jour utilisateur ID:', id);
     
     const [existing] = await pool.execute(
-      'SELECT id_utilisateur, id_role FROM utilisateurs WHERE id_utilisateur = ?',
+      'SELECT id_utilisateur FROM utilisateurs WHERE id_utilisateur = ?',
       [id]
     );
     
@@ -188,18 +201,16 @@ const updateUser = async (req, res) => {
   }
 };
 
-// SUPPRIMER un utilisateur (admin uniquement)
+// SUPPRESSION DÉFINITIVE - Version complète avec gestion de toutes les tables
 const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('🗑️ Suppression utilisateur ID:', id);
+    console.log('🗑️ Suppression définitive utilisateur ID:', id);
     
+    // Vérifier si l'utilisateur existe
     const [user] = await pool.execute(
-      `SELECT u.id_utilisateur, u.nom, u.prenom, r.nom_role 
-       FROM utilisateurs u 
-       JOIN roles r ON u.id_role = r.id_role 
-       WHERE u.id_utilisateur = ?`,
+      'SELECT id_utilisateur, nom, prenom FROM utilisateurs WHERE id_utilisateur = ?',
       [id]
     );
     
@@ -210,34 +221,110 @@ const deleteUser = async (req, res) => {
       });
     }
     
-    const userToDelete = user[0];
+    // ========== SUPPRESSION DES DÉPENDANCES DANS L'ORDRE ==========
     
-    if (userToDelete.nom_role === 'administrateur') {
-      const [adminCount] = await pool.execute(
-        'SELECT COUNT(*) as count FROM utilisateurs u JOIN roles r ON u.id_role = r.id_role WHERE r.nom_role = "administrateur" AND u.actif = 1'
-      );
-      
-      if (adminCount[0].count <= 1) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Impossible de supprimer le dernier administrateur du système' 
-        });
+    // 1. Supprimer les logs d'activité
+    try {
+      await pool.execute('DELETE FROM logs_activites WHERE id_utilisateur = ?', [id]);
+      console.log('  - Logs d\'activité supprimés');
+    } catch (err) {
+      console.log('  - Logs: ignoré', err.message);
+    }
+    
+    // 2. Supprimer les notifications
+    try {
+      await pool.execute('DELETE FROM notifications WHERE id_utilisateur = ?', [id]);
+      console.log('  - Notifications supprimées');
+    } catch (err) {
+      try {
+        await pool.execute('DELETE FROM notifications WHERE user_id = ?', [id]);
+        console.log('  - Notifications supprimées (user_id)');
+      } catch (err2) {
+        console.log('  - Notifications: ignoré');
       }
     }
     
-    await pool.execute('DELETE FROM assignations WHERE id_utilisateur = ?', [id]);
-    await pool.execute('DELETE FROM reponses WHERE id_utilisateur = ?', [id]);
-    await pool.execute('DELETE FROM commentaires_internes WHERE id_utilisateur = ?', [id]);
-    await pool.execute('DELETE FROM logs_activites WHERE id_utilisateur = ?', [id]);
-    await pool.execute('DELETE FROM notifications WHERE id_destinataire = ?', [id]);
+    // 3. Supprimer les commentaires
+    try {
+      await pool.execute('DELETE FROM commentaires WHERE id_utilisateur = ?', [id]);
+      console.log('  - Commentaires supprimés');
+    } catch (err) {
+      try {
+        await pool.execute('DELETE FROM commentaires WHERE user_id = ?', [id]);
+        console.log('  - Commentaires supprimés (user_id)');
+      } catch (err2) {
+        console.log('  - Commentaires: ignoré');
+      }
+    }
+    
+    // 4. Supprimer les transferts (TABLE IMPORTANTE)
+    try {
+      await pool.execute('DELETE FROM transferts WHERE id_utilisateur = ?', [id]);
+      console.log('  - Transferts supprimés');
+    } catch (err) {
+      try {
+        await pool.execute('DELETE FROM transferts WHERE id_agent = ?', [id]);
+        console.log('  - Transferts supprimés (id_agent)');
+      } catch (err2) {
+        try {
+          await pool.execute('DELETE FROM transferts WHERE id_destinataire = ?', [id]);
+          console.log('  - Transferts supprimés (id_destinataire)');
+        } catch (err3) {
+          console.log('  - Transferts: ignoré');
+        }
+      }
+    }
+    
+    // 5. Mettre à jour les doléances (id_agent)
+    try {
+      await pool.execute('UPDATE doleances SET id_agent = NULL WHERE id_agent = ?', [id]);
+      console.log('  - Doléances (agent) mises à jour');
+    } catch (err) {
+      console.log('  - Mise à jour doléances agent: ignoré');
+    }
+    
+    // 6. Mettre à jour les doléances (id_utilisateur)
+    try {
+      await pool.execute('UPDATE doleances SET id_utilisateur = NULL WHERE id_utilisateur = ?', [id]);
+      console.log('  - Doléances (citoyen) mises à jour');
+    } catch (err) {
+      console.log('  - Mise à jour doléances citoyen: ignoré');
+    }
+    
+    // 7. Supprimer les réponses
+    try {
+      await pool.execute('DELETE FROM reponses WHERE id_utilisateur = ?', [id]);
+      console.log('  - Réponses supprimées');
+    } catch (err) {
+      console.log('  - Réponses: ignoré');
+    }
+    
+    // 8. Supprimer l'utilisateur lui-même
     await pool.execute('DELETE FROM utilisateurs WHERE id_utilisateur = ?', [id]);
+    console.log('  - Utilisateur supprimé');
+    
+    console.log(`✅ Utilisateur "${user[0].prenom} ${user[0].nom}" supprimé définitivement avec succès`);
     
     res.json({ 
       success: true, 
-      message: `Utilisateur "${userToDelete.prenom} ${userToDelete.nom}" supprimé avec succès`
+      message: `Utilisateur "${user[0].prenom} ${user[0].nom}" a été supprimé définitivement`
     });
+    
   } catch (error) {
     console.error('Delete user error:', error);
+    
+    // Vérifier quelle contrainte a échoué
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+      // Extraire le nom de la table depuis le message d'erreur
+      const tableMatch = error.sqlMessage.match(/REFERENCES `(\w+)`/);
+      const tableName = tableMatch ? tableMatch[1] : 'inconnue';
+      
+      return res.status(400).json({ 
+        success: false, 
+        message: `Impossible de supprimer cet utilisateur car il a des enregistrements dans la table "${tableName}". Veuillez d'abord supprimer ces dépendances.`
+      });
+    }
+    
     res.status(500).json({ 
       success: false, 
       message: 'Erreur lors de la suppression: ' + error.message 
@@ -252,7 +339,7 @@ const toggleActif = async (req, res) => {
     const { actif } = req.body;
     
     const [user] = await pool.execute(
-      'SELECT u.id_utilisateur, r.nom_role FROM utilisateurs u JOIN roles r ON u.id_role = r.id_role WHERE u.id_utilisateur = ?',
+      'SELECT id_utilisateur FROM utilisateurs WHERE id_utilisateur = ?',
       [id]
     );
     
@@ -263,20 +350,10 @@ const toggleActif = async (req, res) => {
       });
     }
     
-    if (actif === 0 && user[0].nom_role === 'administrateur') {
-      const [adminCount] = await pool.execute(
-        'SELECT COUNT(*) as count FROM utilisateurs u JOIN roles r ON u.id_role = r.id_role WHERE r.nom_role = "administrateur" AND u.actif = 1'
-      );
-      
-      if (adminCount[0].count <= 1) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Impossible de désactiver le dernier administrateur' 
-        });
-      }
-    }
-    
-    await pool.execute('UPDATE utilisateurs SET actif = ? WHERE id_utilisateur = ?', [actif, id]);
+    await pool.execute(
+      'UPDATE utilisateurs SET actif = ? WHERE id_utilisateur = ?', 
+      [actif, id]
+    );
     
     res.json({ 
       success: true, 
@@ -291,6 +368,84 @@ const toggleActif = async (req, res) => {
   }
 };
 
+// Réinitialiser le mot de passe
+const resetPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const temporaryPassword = Math.random().toString(36).slice(-8);
+    
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+    
+    const [columns] = await pool.execute(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_NAME = 'utilisateurs' 
+      AND (COLUMN_NAME = 'mot_de_passe' OR COLUMN_NAME = 'password')
+    `);
+    
+    const passwordColumn = columns[0]?.COLUMN_NAME || 'password';
+    
+    const [result] = await pool.execute(
+      `UPDATE utilisateurs SET ${passwordColumn} = ? WHERE id_utilisateur = ?`,
+      [hashedPassword, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Utilisateur non trouvé' 
+      });
+    }
+    
+    const [users] = await pool.execute(
+      'SELECT email, nom, prenom FROM utilisateurs WHERE id_utilisateur = ?',
+      [id]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Mot de passe réinitialisé',
+      data: { temporaryPassword, email: users[0].email }
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la réinitialisation' 
+    });
+  }
+};
+
+// Récupérer les statistiques utilisateurs
+const getUserStats = async (req, res) => {
+  try {
+    const [total] = await pool.execute('SELECT COUNT(*) as count FROM utilisateurs');
+    const [actifs] = await pool.execute('SELECT COUNT(*) as count FROM utilisateurs WHERE actif = 1');
+    const [byRole] = await pool.execute(
+      `SELECT r.nom_role, COUNT(u.id_utilisateur) as count
+       FROM roles r
+       LEFT JOIN utilisateurs u ON r.id_role = u.id_role
+       GROUP BY r.id_role`
+    );
+    
+    res.json({ 
+      success: true, 
+      data: {
+        total: total[0].count,
+        actifs: actifs[0].count,
+        inactifs: total[0].count - actifs[0].count,
+        byRole
+      }
+    });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors du chargement des statistiques' 
+    });
+  }
+};
+
 // Récupérer les agents disponibles
 const getAgentsDisponibles = async (req, res) => {
   try {
@@ -301,7 +456,7 @@ const getAgentsDisponibles = async (req, res) => {
       FROM utilisateurs u
       LEFT JOIN directions d ON u.id_direction = d.id_direction
       JOIN roles r ON u.id_role = r.id_role
-      WHERE r.nom_role = 'agent' AND u.actif = 1
+      WHERE (r.nom_role = 'agent' OR r.nom_role = 'agent_terrain') AND u.actif = 1
     `;
     const params = [];
     
@@ -359,75 +514,6 @@ const getActivityLogs = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Erreur lors du chargement des logs' 
-    });
-  }
-};
-
-// Réinitialiser le mot de passe
-const resetPassword = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const temporaryPassword = Math.random().toString(36).slice(-8);
-    
-    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
-    
-    const [result] = await pool.execute(
-      'UPDATE utilisateurs SET mot_de_passe = ? WHERE id_utilisateur = ?',
-      [hashedPassword, id]
-    );
-    
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Utilisateur non trouvé' 
-      });
-    }
-    
-    const [users] = await pool.execute(
-      'SELECT email, nom, prenom FROM utilisateurs WHERE id_utilisateur = ?',
-      [id]
-    );
-    
-    res.json({ 
-      success: true, 
-      message: 'Mot de passe réinitialisé',
-      data: { temporaryPassword, email: users[0].email }
-    });
-  } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur lors de la réinitialisation' 
-    });
-  }
-};
-
-// Récupérer les statistiques utilisateurs
-const getUserStats = async (req, res) => {
-  try {
-    const [total] = await pool.execute('SELECT COUNT(*) as count FROM utilisateurs');
-    const [actifs] = await pool.execute('SELECT COUNT(*) as count FROM utilisateurs WHERE actif = 1');
-    const [byRole] = await pool.execute(
-      `SELECT r.nom_role, COUNT(u.id_utilisateur) as count
-       FROM roles r
-       LEFT JOIN utilisateurs u ON r.id_role = u.id_role
-       GROUP BY r.id_role`
-    );
-    
-    res.json({ 
-      success: true, 
-      data: {
-        total: total[0].count,
-        actifs: actifs[0].count,
-        inactifs: total[0].count - actifs[0].count,
-        byRole
-      }
-    });
-  } catch (error) {
-    console.error('Get user stats error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur lors du chargement des statistiques' 
     });
   }
 };

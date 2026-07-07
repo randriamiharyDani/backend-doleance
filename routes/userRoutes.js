@@ -1,27 +1,49 @@
-// routes/transfertRoutes.js
+// routes/userRoutes.js
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
-    getDoleancesATransferer,
-    transfererVersDirection,
-    transfererVersService,
-    getHistoriqueTransferts,
-    annulerTransfert,
-    getStatsTransferts
-} = require('../controllers/transfertController');
+    getUsers,
+    getUserById,
+    createUser,
+    updateUser,
+    deleteUser,
+    toggleActif,
+    getAgentsDisponibles,
+    getActivityLogs,
+    resetPassword,
+    getUserStats
+} = require('../controllers/userController');
 
-// Toutes les routes nécessitent authentification
+// Routes publiques (pour test)
+router.get('/test', (req, res) => {
+    res.json({ success: true, message: 'Route users fonctionne' });
+});
+
+// ========== ROUTES PROTÉGÉES ==========
 router.use(protect);
 
-// Routes pour l'agent central
-router.get('/a-transférer', authorize('agent_central', 'administrateur_systeme'), getDoleancesATransferer);
-router.get('/historique', authorize('agent_central', 'administrateur_systeme', 'directeur'), getHistoriqueTransferts);
-router.get('/stats', authorize('agent_central', 'administrateur_systeme'), getStatsTransferts);
+// Profil (accessible par l'utilisateur lui-même)
+router.get('/profile', getUserById);
+router.put('/profile', updateUser);
 
-// Actions de transfert
-router.post('/:id/transferer-direction', authorize('agent_central', 'administrateur_systeme'), transfererVersDirection);
-router.post('/:id/transferer-service', authorize('agent_central', 'administrateur_systeme'), transfererVersService);
-router.post('/:id/annuler', authorize('agent_central', 'administrateur_systeme'), annulerTransfert);
+// ========== ROUTES POUR AGENT CENTRAL ==========
+// Route pour récupérer les agents (accessible à agent_central et administrateur_systeme)
+router.get('/agents', authorize('agent_central', 'administrateur_systeme', 'administrateur'), getAgentsDisponibles);
+
+// ========== ROUTES ADMINISTRATION (Super Admin uniquement) ==========
+// Seul l'administrateur_systeme peut gérer les utilisateurs
+
+// Gestion des utilisateurs
+router.get('/', authorize('administrateur_systeme'), getUsers);
+router.get('/stats', authorize('administrateur_systeme'), getUserStats);
+router.get('/agents/disponibles', authorize('administrateur_systeme'), getAgentsDisponibles);
+router.get('/:id', authorize('administrateur_systeme'), getUserById);
+router.get('/:id/logs', authorize('administrateur_systeme'), getActivityLogs);
+router.post('/', authorize('administrateur_systeme'), createUser);
+router.put('/:id', authorize('administrateur_systeme'), updateUser);
+router.delete('/:id', authorize('administrateur_systeme'), deleteUser);
+router.patch('/:id/toggle', authorize('administrateur_systeme'), toggleActif);
+router.post('/:id/reset-password', authorize('administrateur_systeme'), resetPassword);
 
 module.exports = router;

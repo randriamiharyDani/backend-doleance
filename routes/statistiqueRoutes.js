@@ -8,6 +8,8 @@ const {
     getStatsByStatut,
     getStatsByPriorite,
     getEvolutionTemporelle,
+    getEvolutionStats,
+    getCategoriesStats,
     getTempsTraitementMoyen,
     getPerformanceAgents,
     getStatsByQuartier,
@@ -15,16 +17,28 @@ const {
     exportStats
 } = require('../controllers/statistiqueController');
 
-router.get('/dashboard', protect, getDashboardStats);
-router.get('/categories', protect, authorize('directeur', 'administrateur', 'maire'), getStatsByCategorie);
-router.get('/directions', protect, authorize('directeur', 'administrateur', 'maire'), getStatsByDirection);
-router.get('/statuts', protect, authorize('directeur', 'administrateur', 'maire'), getStatsByStatut);
-router.get('/priorites', protect, authorize('directeur', 'administrateur', 'maire'), getStatsByPriorite);
-router.get('/evolution', protect, authorize('directeur', 'administrateur', 'maire'), getEvolutionTemporelle);
-router.get('/temps-traitement', protect, authorize('directeur', 'administrateur', 'maire'), getTempsTraitementMoyen);
-router.get('/agents-performance', protect, authorize('directeur', 'administrateur', 'maire'), getPerformanceAgents);
-router.get('/quartiers', protect, authorize('directeur', 'administrateur', 'maire'), getStatsByQuartier);
-router.get('/satisfaction', protect, authorize('directeur', 'administrateur', 'maire'), getTauxSatisfaction);
-router.post('/export/:format', protect, authorize('directeur', 'administrateur'), exportStats);
+// Toutes les routes nécessitent authentification
+router.use(protect);
+
+// ========== ROUTES ACCESSIBLES À TOUS LES UTILISATEURS AUTHENTIFIÉS ==========
+router.get('/dashboard', getDashboardStats);
+router.get('/evolution', getEvolutionStats);
+router.get('/categories', getCategoriesStats);
+router.get('/statuts', getStatsByStatut);
+router.get('/satisfaction', getTauxSatisfaction);
+router.get('/evolution-temporelle', getEvolutionTemporelle);
+router.get('/temps-traitement', getTempsTraitementMoyen);
+
+// ========== ROUTES ADMINISTRATION (admin système et administrateur uniquement) ==========
+router.get('/by-categorie', authorize('administrateur_systeme', 'administrateur'), getStatsByCategorie);
+router.get('/by-direction', authorize('administrateur_systeme', 'administrateur'), getStatsByDirection);
+router.get('/by-priorite', authorize('administrateur_systeme', 'administrateur'), getStatsByPriorite);
+router.get('/by-quartier', authorize('administrateur_systeme', 'administrateur'), getStatsByQuartier);
+
+// ========== ROUTES PERFORMANCE (admin système, admin et directeur) ==========
+router.get('/performance-agents', authorize('administrateur_systeme', 'administrateur', 'directeur'), getPerformanceAgents);
+
+// ========== ROUTES D'EXPORT (admin système et administrateur uniquement) ==========
+router.post('/export/:format', authorize('administrateur_systeme', 'administrateur'), exportStats);
 
 module.exports = router;

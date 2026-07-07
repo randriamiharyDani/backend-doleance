@@ -1,3 +1,4 @@
+// routes/roleRoutes.js
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
@@ -16,16 +17,16 @@ const {
 // Toutes les routes nécessitent une authentification
 router.use(protect);
 
-// Routes GET - Accessibles à tous les utilisateurs authentifiés
-router.get('/', getRoles);
-router.get('/hierarchy', getRoleHierarchy);
-router.get('/:id', getRoleById);
-router.get('/:id/permissions', getRolePermissions);
+// ========== ROUTES DE LECTURE ==========
+// Seul le super admin peut voir les rôles et permissions
+router.get('/', authorize('administrateur_systeme'), getRoles);
+router.get('/hierarchy', authorize('administrateur_systeme'), getRoleHierarchy);
+router.get('/:id', authorize('administrateur_systeme'), getRoleById);
+router.get('/:id/permissions', authorize('administrateur_systeme'), getRolePermissions);
 
-// Routes d'initialisation (admin système uniquement)
+// ========== ROUTES D'ÉCRITURE ==========
+// Admin système uniquement
 router.post('/init', authorize('administrateur_systeme'), initDefaultRoles);
-
-// Routes d'écriture - Admin système uniquement
 router.post('/', authorize('administrateur_systeme'), createRole);
 router.put('/:id', authorize('administrateur_systeme'), updateRole);
 router.delete('/:id', authorize('administrateur_systeme'), deleteRole);
