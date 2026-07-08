@@ -1,63 +1,15 @@
-// ============================================================
-// FICHIER : controllers/doleanceController.js
-// VERSION FINALE - TOUTES LES FONCTIONNALITÉS
-// ============================================================
-
 const { pool } = require('../config/database');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-// ========== CONFIGURATION UPLOAD (MULTER) ==========
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads/doleances');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, `doleance-${uniqueSuffix}${ext}`);
-  }
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/x-msvideo'];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Type de fichier non supporté'), false);
-  }
-};
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50 Mo
-}).array('files', 5);
-
-// ========== GÉNÉRATEURS ==========
-const generateReference = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `DOL-${year}${month}${day}-${random}`;
-};
-
-const generateCitizenId = () => {
-  const year = new Date().getFullYear();
-  const random = Math.random().toString(36).substring(2, 10).toUpperCase();
-  return `CIT${year}-${random}`;
-};
+const doleanceModel = require('../models/doleanceModel');
+const citoyenModel = require('../models/citoyenModel');
+const pieceJointeModel = require('../models/pieceJointeModel');
+const referenceModel = require('../models/referenceModel');
+const reponseModel = require('../models/reponseModel');
+const historiqueModel = require('../models/historiqueModel');
+const transfertModel = require('../models/transfertModel');
 
 // ========== UPLOAD DES PIÈCES JOINTES ==========
 const uploadPiecesJointes = async (req, res) => {
-  upload(req, res, async (err) => {
+  pieceJointeModel.upload(req, res, async (err) => {
     if (err) {
       console.error('Upload error:', err);
       return res.status(400).json({ success: false, message: err.message || 'Erreur lors de l\'upload' });
@@ -75,10 +27,7 @@ const uploadPiecesJointes = async (req, res) => {
     await connection.beginTransaction();
 
     try {
-      const [doleance] = await connection.execute(
-        'SELECT id_doleance FROM doleances WHERE id_doleance = ?',
-        [doleance_id]
-      );
+      const doleance = await doleanceModel.findById(doleance_id);
       if (doleance.length === 0) {
         await connection.rollback();
         return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
@@ -87,19 +36,19 @@ const uploadPiecesJointes = async (req, res) => {
       const uploadedFiles = [];
       for (const file of req.files) {
         const type = file.mimetype.startsWith('image/') ? 'image' : 'video';
-        const taille = file.size;
-
-        const [result] = await connection.execute(
-          `INSERT INTO pieces_jointes (id_doleance, nom_fichier, chemin_fichier, type, taille, date_upload)
-           VALUES (?, ?, ?, ?, ?, NOW())`,
-          [doleance_id, file.filename, file.path, type, taille]
-        );
+        const id = await pieceJointeModel.insert(connection, {
+          id_doleance: doleance_id,
+          filename: file.filename,
+          filepath: file.path,
+          type,
+          taille: file.size
+        });
 
         uploadedFiles.push({
-          id: result.insertId,
+          id,
           nom_fichier: file.filename,
           type,
-          taille
+          taille: file.size
         });
       }
 
@@ -123,20 +72,8 @@ const uploadPiecesJointes = async (req, res) => {
 const getPiecesJointes = async (req, res) => {
   try {
     const { id } = req.params;
-    const [pieces] = await pool.execute(
-      `SELECT id_piece, nom_fichier, type, taille, date_upload
-       FROM pieces_jointes 
-       WHERE id_doleance = ?
-       ORDER BY date_upload DESC`,
-      [id]
-    );
-
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const piecesWithUrl = pieces.map(piece => ({
-      ...piece,
-      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
-    }));
-
+    const pieces = await pieceJointeModel.findByDoleanceId(id);
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(pieces, req);
     res.json({ success: true, data: piecesWithUrl });
   } catch (error) {
     console.error('Get pieces jointes error:', error);
@@ -148,20 +85,11 @@ const getPiecesJointes = async (req, res) => {
 const downloadPieceJointe = async (req, res) => {
   try {
     const { id } = req.params;
-    const [pieces] = await pool.execute(
-      'SELECT nom_fichier, chemin_fichier FROM pieces_jointes WHERE id_piece = ?',
-      [id]
-    );
+    const pieces = await pieceJointeModel.findById(id);
     if (pieces.length === 0) {
       return res.status(404).json({ success: false, message: 'Fichier non trouvé' });
     }
-
-    const piece = pieces[0];
-    if (!fs.existsSync(piece.chemin_fichier)) {
-      return res.status(404).json({ success: false, message: 'Le fichier n\'existe plus sur le serveur' });
-    }
-
-    res.download(piece.chemin_fichier, piece.nom_fichier);
+    res.download(pieces[0].chemin, pieces[0].nom_fichier);
   } catch (error) {
     console.error('Download piece jointe error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -171,20 +99,7 @@ const downloadPieceJointe = async (req, res) => {
 // ========== SUPPRIMER UNE PIÈCE JOINTE ==========
 const deletePieceJointe = async (req, res) => {
   try {
-    const { id } = req.params;
-    const [pieces] = await pool.execute(
-      'SELECT chemin_fichier FROM pieces_jointes WHERE id_piece = ?',
-      [id]
-    );
-    if (pieces.length === 0) {
-      return res.status(404).json({ success: false, message: 'Fichier non trouvé' });
-    }
-
-    if (fs.existsSync(pieces[0].chemin_fichier)) {
-      fs.unlinkSync(pieces[0].chemin_fichier);
-    }
-
-    await pool.execute('DELETE FROM pieces_jointes WHERE id_piece = ?', [id]);
+    await pieceJointeModel.deleteById(req.params.id);
     res.json({ success: true, message: 'Fichier supprimé avec succès' });
   } catch (error) {
     console.error('Delete piece jointe error:', error);
@@ -200,15 +115,11 @@ const sendReferenceByContact = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Contact, type et référence requis' });
     }
 
-    const [doleance] = await pool.execute(
-      'SELECT reference, titre FROM doleances WHERE reference = ?',
-      [reference]
-    );
+    const doleance = await doleanceModel.findByReference(reference);
     if (doleance.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
-    // Simulation d'envoi (à remplacer par un vrai service)
     if (contactType === 'email') {
       console.log(`📧 Envoi d'email à ${contact} avec la référence ${reference}`);
     } else if (contactType === 'phone') {
@@ -232,16 +143,8 @@ const getSuggestions = async (req, res) => {
     if (!q || q.length < 2) {
       return res.json({ success: true, data: [] });
     }
-
-    const searchTerm = `%${q}%`;
-    const [suggestions] = await pool.execute(
-      `SELECT DISTINCT titre as suggestion 
-       FROM doleances 
-       WHERE titre LIKE ? OR description LIKE ?
-       LIMIT 10`,
-      [searchTerm, searchTerm]
-    );
-    res.json({ success: true, data: suggestions.map(s => s.suggestion) });
+    const suggestions = await doleanceModel.searchSuggestions(q);
+    res.json({ success: true, data: suggestions });
   } catch (error) {
     console.error('Get suggestions error:', error);
     res.status(500).json({ success: false, data: [] });
@@ -251,75 +154,16 @@ const getSuggestions = async (req, res) => {
 // ========== RÉCUPÉRER TOUTES LES DOLÉANCES (PUBLIC) ==========
 const getDoleancesPublic = async (req, res) => {
   try {
-    const { categorie, statut, search, page = 1, limit = 10, sort = 'date_desc' } = req.query;
-
-    let query = `
-      SELECT 
-        d.id_doleance, d.reference, d.titre, d.description, d.date_creation, d.date_mise_a_jour,
-        s.id_statut, s.nom_statut, s.couleur as statut_couleur,
-        p.id_priorite, p.nom_priorite, p.niveau,
-        c.id_categorie, c.nom_categorie,
-        dir.id_direction, dir.nom_direction
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-      WHERE 1=1
-    `;
-    const params = [];
-
-    if (categorie) {
-      query += ' AND d.id_categorie = ?';
-      params.push(Number(categorie));
-    }
-    if (statut) {
-      query += ' AND d.id_statut = ?';
-      params.push(Number(statut));
-    }
-    if (search) {
-      query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    // Count
-    let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
-    const countParams = [];
-    if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
-    if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
-    if (search) {
-      countQuery += ' AND (reference LIKE ? OR titre LIKE ? OR description LIKE ?)';
-      const term = `%${search}%`;
-      countParams.push(term, term, term);
-    }
-    const [countResult] = await pool.execute(countQuery, countParams);
-    const total = countResult[0]?.total || 0;
-
-    // Order
-    const orderMap = {
-      'date_desc': 'd.date_creation DESC',
-      'date_asc': 'd.date_creation ASC',
-      'priorite_desc': 'p.niveau DESC, d.date_creation DESC',
-      'priorite_asc': 'p.niveau ASC, d.date_creation DESC'
-    };
-    const orderBy = orderMap[sort] || 'd.date_creation DESC';
-
-    const offset = (Number(page) - 1) * Number(limit);
-    query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-    params.push(Number(limit), offset);
-
-    const [doleances] = await pool.execute(query, params);
-
+    const result = await doleanceModel.listPublic(req.query);
     res.json({
       success: true,
       data: {
-        doleances,
+        doleances: result.data,
         pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit)
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          pages: result.pages
         }
       }
     });
@@ -332,7 +176,6 @@ const getDoleancesPublic = async (req, res) => {
 // ========== RÉCUPÉRER DOLÉANCES (BACKOFFICE) ==========
 const getDoleancesBackoffice = async (req, res) => {
   try {
-    const { page = 1, limit = 10, categorie, statut, priorite, search } = req.query;
     const userId = req.user?.id_utilisateur;
     const userRole = req.user?.nom_role;
 
@@ -340,89 +183,21 @@ const getDoleancesBackoffice = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Non authentifié' });
     }
 
-    // Construction de la requête
-    let query = `
-      SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
-             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
-             ct.email as citoyen_email, ct.telephone as citoyen_telephone,
-             dir.nom_direction
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-      WHERE 1=1
-    `;
-    const params = [];
-
-    // Filtrage par rôle
-    const adminRoles = ['administrateur_systeme', 'agent_central', 'administrateur'];
-    if (adminRoles.includes(userRole)) {
-      // Admin voit tout
-    } else {
-      const [user] = await pool.execute('SELECT id_direction FROM utilisateurs WHERE id_utilisateur = ?', [userId]);
-      const directionId = user[0]?.id_direction;
-      if (directionId) {
-        query += ' AND d.id_direction = ?';
-        params.push(directionId);
-      }
-      // Si pas de direction, on affiche tout (pour déboguer) – peut être modifié en AND 1=0
-    }
-
-    // Filtres supplémentaires
-    if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
-    if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
-    if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
-    if (search) {
-      query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    // Comptage total
-    let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
-    const countParams = [];
-    let countWhere = '';
-    if (!adminRoles.includes(userRole)) {
-      const [user] = await pool.execute('SELECT id_direction FROM utilisateurs WHERE id_utilisateur = ?', [userId]);
-      const directionId = user[0]?.id_direction;
-      if (directionId) {
-        countWhere += ' AND d.id_direction = ?';
-        countParams.push(directionId);
-      }
-    }
-    if (categorie) { countWhere += ' AND d.id_categorie = ?'; countParams.push(Number(categorie)); }
-    if (statut) { countWhere += ' AND d.id_statut = ?'; countParams.push(Number(statut)); }
-    if (priorite) { countWhere += ' AND d.id_priorite = ?'; countParams.push(Number(priorite)); }
-    if (search) {
-      countWhere += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const term = `%${search}%`;
-      countParams.push(term, term, term);
-    }
-
-    const [countResult] = await pool.execute(
-      `SELECT COUNT(*) as total FROM doleances d WHERE 1=1 ${countWhere}`,
-      countParams
-    );
-    const total = countResult[0]?.total || 0;
-
-    // Pagination
-    const offset = (Number(page) - 1) * Number(limit);
-    query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
-    params.push(Number(limit), offset);
-
-    const [doleances] = await pool.execute(query, params);
+    const result = await doleanceModel.listBackoffice({
+      ...req.query,
+      userId,
+      userRole
+    });
 
     res.json({
       success: true,
       data: {
-        doleances,
+        doleances: result.data,
         pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit)
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          pages: result.pages
         }
       }
     });
@@ -435,61 +210,16 @@ const getDoleancesBackoffice = async (req, res) => {
 // ========== RÉCUPÉRER TOUTES LES DOLÉANCES (SIMPLE) ==========
 const getDoleances = async (req, res) => {
   try {
-    const { page = 1, limit = 10, categorie, statut, priorite, search } = req.query;
-
-    let query = `
-      SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
-             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
-             ct.email as citoyen_email, ct.telephone as citoyen_telephone,
-             dir.nom_direction
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-      WHERE 1=1
-    `;
-    const params = [];
-
-    if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
-    if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
-    if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
-    if (search) {
-      query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    // Count
-    let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
-    const countParams = [];
-    if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
-    if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
-    if (priorite) { countQuery += ' AND id_priorite = ?'; countParams.push(Number(priorite)); }
-    if (search) {
-      countQuery += ' AND (reference LIKE ? OR titre LIKE ? OR description LIKE ?)';
-      const term = `%${search}%`;
-      countParams.push(term, term, term);
-    }
-    const [countResult] = await pool.execute(countQuery, countParams);
-    const total = countResult[0]?.total || 0;
-
-    const offset = (Number(page) - 1) * Number(limit);
-    query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
-    params.push(Number(limit), offset);
-
-    const [doleances] = await pool.execute(query, params);
-
+    const result = await doleanceModel.list(req.query);
     res.json({
       success: true,
       data: {
-        doleances,
+        doleances: result.data,
         pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / limit)
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          pages: result.pages
         }
       }
     });
@@ -502,49 +232,15 @@ const getDoleances = async (req, res) => {
 // ========== DOLÉANCES EN ATTENTE DE TRANSFERT ==========
 const getDoleancesEnAttenteTransfert = async (req, res) => {
   try {
-    const { page = 1, limit = 10, categorie, search } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
-
-    let query = `
-      SELECT d.*, 
-             s.nom_statut, s.couleur as statut_couleur,
-             c.nom_categorie,
-             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
-             ct.telephone as citoyen_telephone
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
-    `;
-    const params = [];
-
-    if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
-    if (search) {
-      query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const term = `%${search}%`;
-      params.push(term, term, term);
-    }
-
-    const [countResult] = await pool.execute(
-      `SELECT COUNT(*) as total FROM doleances d 
-       WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')`
-    );
-    const total = countResult[0]?.total || 0;
-
-    query += ' ORDER BY d.date_creation ASC LIMIT ? OFFSET ?';
-    params.push(Number(limit), offset);
-
-    const [doleances] = await pool.execute(query, params);
-
+    const result = await doleanceModel.listEnAttenteTransfert(req.query);
     res.json({
       success: true,
-      data: doleances,
+      data: result.data,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / limit)
+        page: result.page,
+        limit: result.limit,
+        total: result.total,
+        pages: result.pages
       }
     });
   } catch (error) {
@@ -568,49 +264,39 @@ const transfererDoleanceCentral = async (req, res) => {
     await connection.beginTransaction();
 
     try {
-      const [doleance] = await connection.execute(
-        'SELECT id_doleance, reference, id_direction, id_statut FROM doleances WHERE id_doleance = ?',
-        [Number(id)]
-      );
+      const doleance = await doleanceModel.findById(id);
       if (doleance.length === 0) {
         await connection.rollback();
         return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
       }
 
-      const [direction] = await connection.execute(
-        'SELECT id_direction, nom_direction FROM directions WHERE id_direction = ? AND actif = 1',
-        [Number(id_direction)]
-      );
+      const direction = await referenceModel.findDirectionById(connection, id_direction);
       if (direction.length === 0) {
         await connection.rollback();
         return res.status(404).json({ success: false, message: 'Direction de destination non trouvée' });
       }
 
-      const [statutTransfere] = await connection.execute(
-        "SELECT id_statut FROM statuts WHERE nom_statut = 'transferee'"
-      );
+      const statutTransfere = await referenceModel.findStatutByNom(connection, 'transferee');
       const idStatut = statutTransfere[0]?.id_statut || 4;
 
-      await connection.execute(
-        `UPDATE doleances 
-         SET id_direction = ?, id_statut = ?, date_mise_a_jour = NOW()
-         WHERE id_doleance = ?`,
-        [Number(id_direction), idStatut, Number(id)]
-      );
+      await doleanceModel.updateDirectionAndStatut(connection, id, id_direction, idStatut);
 
       const motif = (commentaire && commentaire.trim()) ? commentaire.trim() : 'Transfert par agent central';
 
-      await connection.execute(
-        `INSERT INTO transferts (id_doleance, id_direction_source, id_direction_destination, id_utilisateur, motif, date_transfert)
-         VALUES (?, ?, ?, ?, ?, NOW())`,
-        [Number(id), doleance[0].id_direction || null, Number(id_direction), Number(userId), motif]
-      );
+      await transfertModel.create(connection, {
+        id_doleance: id,
+        id_direction_source: doleance[0].id_direction,
+        id_direction_destination: id_direction,
+        id_utilisateur: userId,
+        motif
+      });
 
-      await connection.execute(
-        `INSERT INTO historique_statuts (id_doleance, id_statut_ancien, id_statut_nouveau, commentaire, date_changement)
-         VALUES (?, ?, ?, ?, NOW())`,
-        [Number(id), doleance[0].id_statut || null, idStatut, `Doléance transférée vers ${direction[0].nom_direction} - Motif: ${motif}`]
-      );
+      await historiqueModel.create(connection, {
+        id_doleance: Number(id),
+        id_statut_ancien: doleance[0].id_statut,
+        id_statut_nouveau: idStatut,
+        commentaire: `Doléance transférée vers ${direction[0].nom_direction} - Motif: ${motif}`
+      });
 
       await connection.commit();
 
@@ -635,39 +321,17 @@ const transfererDoleanceCentral = async (req, res) => {
 const getDoleanceByReference = async (req, res) => {
   try {
     const { reference } = req.params;
-    const [doleances] = await pool.execute(
-      `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie
-       FROM doleances d
-       JOIN statuts s ON d.id_statut = s.id_statut
-       JOIN priorites p ON d.id_priorite = p.id_priorite
-       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-       WHERE d.reference = ?`,
-      [reference]
-    );
+    const doleances = await doleanceModel.findByReference(reference);
     if (doleances.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
     const doleance = doleances[0];
-    const [reponses] = await pool.execute(
-      'SELECT message, date_reponse FROM reponses WHERE id_doleance = ? ORDER BY date_reponse ASC',
-      [doleance.id_doleance]
-    );
-    const [historique] = await pool.execute(
-      `SELECT h.date_changement, h.commentaire,
-              s_ancien.nom_statut as ancien_statut,
-              s_nouveau.nom_statut as nouveau_statut
-       FROM historique_statuts h
-       LEFT JOIN statuts s_ancien ON h.id_statut_ancien = s_ancien.id_statut
-       LEFT JOIN statuts s_nouveau ON h.id_statut_nouveau = s_nouveau.id_statut
-       WHERE h.id_doleance = ?
-       ORDER BY h.date_changement ASC`,
-      [doleance.id_doleance]
-    );
-    const [piecesJointes] = await pool.execute(
-      'SELECT id_piece, nom_fichier, type, taille, date_upload FROM pieces_jointes WHERE id_doleance = ? ORDER BY date_upload DESC',
-      [doleance.id_doleance]
-    );
+    const [reponses, historique, piecesJointes] = await Promise.all([
+      reponseModel.findByDoleanceId(doleance.id_doleance),
+      historiqueModel.findByDoleanceId(doleance.id_doleance),
+      pieceJointeModel.findByDoleanceId(doleance.id_doleance)
+    ]);
 
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
     const piecesWithUrl = piecesJointes.map(piece => ({
@@ -702,44 +366,19 @@ const getDoleanceByReference = async (req, res) => {
 const getDoleanceById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [doleances] = await pool.execute(
-      `SELECT d.*, s.nom_statut, s.couleur as statut_couleur,
-              p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction,
-              ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
-              ct.email as citoyen_email, ct.telephone as citoyen_telephone,
-              ct.adresse as citoyen_adresse
-       FROM doleances d
-       LEFT JOIN statuts s ON d.id_statut = s.id_statut
-       LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-       LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-       WHERE d.id_doleance = ?`,
-      [id]
-    );
+    const doleances = await doleanceModel.findById(id);
     if (doleances.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
     const doleance = doleances[0];
-    const [reponses] = await pool.execute(
-      'SELECT id_reponse, message, date_reponse FROM reponses WHERE id_doleance = ? ORDER BY date_reponse ASC',
-      [doleance.id_doleance]
-    );
-    const [historique] = await pool.execute(
-      'SELECT date_changement, commentaire FROM historique_statuts WHERE id_doleance = ? ORDER BY date_changement ASC',
-      [doleance.id_doleance]
-    );
-    const [piecesJointes] = await pool.execute(
-      'SELECT id_piece, nom_fichier, type, taille, date_upload FROM pieces_jointes WHERE id_doleance = ? ORDER BY date_upload DESC',
-      [doleance.id_doleance]
-    );
+    const [reponses, historique, piecesJointes] = await Promise.all([
+      reponseModel.findByDoleanceId(doleance.id_doleance),
+      historiqueModel.findByDoleanceIdSimple(doleance.id_doleance),
+      pieceJointeModel.findByDoleanceId(doleance.id_doleance)
+    ]);
 
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const piecesWithUrl = piecesJointes.map(piece => ({
-      ...piece,
-      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
-    }));
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(piecesJointes, req);
 
     res.json({
       success: true,
@@ -764,26 +403,12 @@ const getDoleancesByCitizenId = async (req, res) => {
       return res.status(400).json({ success: false, message: "L'identifiant citoyen est requis" });
     }
 
-    const [citoyens] = await pool.execute(
-      'SELECT id_citoyen, nom, prenom, telephone, adresse, identifiant_citoyen FROM citoyens WHERE identifiant_citoyen = ?',
-      [identifiant]
-    );
+    const citoyens = await citoyenModel.findByIdentifiant(identifiant);
     if (citoyens.length === 0) {
       return res.status(404).json({ success: false, message: 'Aucun citoyen trouvé avec cet identifiant' });
     }
 
-    const id_citoyen = citoyens[0].id_citoyen;
-    const [doleances] = await pool.execute(
-      `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction
-       FROM doleances d
-       LEFT JOIN statuts s ON d.id_statut = s.id_statut
-       LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-       WHERE d.id_citoyen = ?
-       ORDER BY d.date_creation DESC`,
-      [id_citoyen]
-    );
+    const doleances = await doleanceModel.findByCitoyenId(citoyens[0].id_citoyen);
 
     res.json({ success: true, data: doleances, citoyen: citoyens[0], count: doleances.length });
   } catch (error) {
@@ -796,54 +421,24 @@ const getDoleancesByCitizenId = async (req, res) => {
 const getDoleanceByReferenceAndCitizenId = async (req, res) => {
   try {
     const { reference, identifiant } = req.params;
-    const [citoyens] = await pool.execute(
-      'SELECT id_citoyen FROM citoyens WHERE identifiant_citoyen = ?',
-      [identifiant]
-    );
+    const citoyens = await citoyenModel.findByIdentifiant(identifiant);
     if (citoyens.length === 0) {
       return res.status(404).json({ success: false, message: 'Identifiant citoyen invalide' });
     }
 
-    const [doleances] = await pool.execute(
-      `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction
-       FROM doleances d
-       LEFT JOIN statuts s ON d.id_statut = s.id_statut
-       LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-       WHERE d.reference = ? AND d.id_citoyen = ?`,
-      [reference, citoyens[0].id_citoyen]
-    );
+    const doleances = await doleanceModel.findByReferenceAndCitoyen(reference, citoyens[0].id_citoyen);
     if (doleances.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée ou accès non autorisé' });
     }
 
     const doleance = doleances[0];
-    const [reponses] = await pool.execute(
-      'SELECT message, date_reponse FROM reponses WHERE id_doleance = ? ORDER BY date_reponse ASC',
-      [doleance.id_doleance]
-    );
-    const [historique] = await pool.execute(
-      `SELECT h.date_changement, h.commentaire,
-              s_ancien.nom_statut as ancien_statut,
-              s_nouveau.nom_statut as nouveau_statut
-       FROM historique_statuts h
-       LEFT JOIN statuts s_ancien ON h.id_statut_ancien = s_ancien.id_statut
-       LEFT JOIN statuts s_nouveau ON h.id_statut_nouveau = s_nouveau.id_statut
-       WHERE h.id_doleance = ?
-       ORDER BY h.date_changement ASC`,
-      [doleance.id_doleance]
-    );
-    const [piecesJointes] = await pool.execute(
-      'SELECT id_piece, nom_fichier, type, taille, date_upload FROM pieces_jointes WHERE id_doleance = ? ORDER BY date_upload DESC',
-      [doleance.id_doleance]
-    );
+    const [reponses, historique, piecesJointes] = await Promise.all([
+      reponseModel.findByDoleanceId(doleance.id_doleance),
+      historiqueModel.findByDoleanceId(doleance.id_doleance),
+      pieceJointeModel.findByDoleanceId(doleance.id_doleance)
+    ]);
 
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const piecesWithUrl = piecesJointes.map(piece => ({
-      ...piece,
-      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
-    }));
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(piecesJointes, req);
 
     res.json({
       success: true,
@@ -887,72 +482,57 @@ const createDoleance = async (req, res) => {
 
     try {
       let finalCitizenId = identifiant_citoyen;
-      let existingCitoyen = null;
+      let id_citoyen;
 
       if (identifiant_citoyen && identifiant_citoyen.trim()) {
-        [existingCitoyen] = await connection.execute(
-          'SELECT id_citoyen, identifiant_citoyen FROM citoyens WHERE identifiant_citoyen = ?',
-          [identifiant_citoyen]
-        );
+        const existingCitoyen = await citoyenModel.findByIdentifiant(identifiant_citoyen);
+        if (existingCitoyen.length > 0) {
+          id_citoyen = existingCitoyen[0].id_citoyen;
+          finalCitizenId = existingCitoyen[0].identifiant_citoyen;
+        }
       }
 
-      let id_citoyen;
-      if (existingCitoyen && existingCitoyen.length > 0) {
-        id_citoyen = existingCitoyen[0].id_citoyen;
-        finalCitizenId = existingCitoyen[0].identifiant_citoyen;
-      } else {
-        finalCitizenId = generateCitizenId();
-        const [resultCitoyen] = await connection.execute(
-          `INSERT INTO citoyens (nom, prenom, telephone, adresse, identifiant_citoyen) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [nom_citoyen, prenom_citoyen, telephone_citoyen || null, adresse_citoyen || null, finalCitizenId]
-        );
-        id_citoyen = resultCitoyen.insertId;
+      if (!id_citoyen) {
+        finalCitizenId = citoyenModel.generateCitizenId();
+        id_citoyen = await citoyenModel.create({
+          nom: nom_citoyen,
+          prenom: prenom_citoyen,
+          telephone: telephone_citoyen,
+          adresse: adresse_citoyen,
+          identifiant_citoyen: finalCitizenId
+        });
       }
 
-      const reference = generateReference();
-      const defaultPriorite = 2;
+      const reference = doleanceModel.generateReference();
       const defaultStatut = 1;
+      let defaultDirection = await doleanceModel.getDefaultDirection(id_categorie);
 
-      // Mapping catégorie → direction par défaut
-      const directionParCategorie = {
-        1: 1, 2: 2, 3: 2, 4: 2, 5: 4, 6: 3, 7: 5, 8: 6
-      };
-      let defaultDirection = directionParCategorie[Number(id_categorie)] || 1;
-
-      // Vérifier que la direction existe
-      const [directionsExist] = await connection.execute(
-        'SELECT id_direction FROM directions WHERE id_direction = ?',
-        [defaultDirection]
-      );
+      const directionsExist = await referenceModel.findDirectionById(connection, defaultDirection);
       if (directionsExist.length === 0) {
-        const [firstDirection] = await connection.execute('SELECT id_direction FROM directions LIMIT 1');
+        const firstDirection = await referenceModel.findFirstDirection(connection);
         defaultDirection = firstDirection[0]?.id_direction || 1;
       }
 
       const quartierValue = id_quartier ? Number(id_quartier) : null;
 
-      const [resultDoleance] = await connection.execute(
-        `INSERT INTO doleances 
-         (reference, titre, description, id_citoyen, id_categorie, id_priorite, 
-          id_quartier, id_direction, id_statut)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [reference, titre, description, id_citoyen, Number(id_categorie), defaultPriorite,
-         quartierValue, defaultDirection, defaultStatut]
-      );
+      const id_doleance = await doleanceModel.create(connection, {
+        reference, titre, description, id_citoyen, id_categorie,
+        id_quartier: quartierValue, id_direction: defaultDirection, id_statut: defaultStatut
+      });
 
-      await connection.execute(
-        `INSERT INTO historique_statuts (id_doleance, id_statut_ancien, id_statut_nouveau, commentaire) 
-         VALUES (?, NULL, ?, 'Création de la doléance')`,
-        [resultDoleance.insertId, defaultStatut]
-      );
+      await historiqueModel.create(connection, {
+        id_doleance,
+        id_statut_ancien: null,
+        id_statut_nouveau: defaultStatut,
+        commentaire: 'Création de la doléance'
+      });
 
       await connection.commit();
 
       res.status(201).json({
         success: true,
         message: 'Doléance créée avec succès',
-        data: { id: resultDoleance.insertId, reference, identifiant_citoyen: finalCitizenId }
+        data: { id: id_doleance, reference, identifiant_citoyen: finalCitizenId }
       });
     } catch (error) {
       await connection.rollback();
@@ -975,13 +555,14 @@ const updateStatut = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Statut requis' });
     }
 
-    const [oldStatut] = await pool.execute('SELECT id_statut FROM doleances WHERE id_doleance = ?', [id]);
-    await pool.execute('UPDATE doleances SET id_statut = ?, date_mise_a_jour = NOW() WHERE id_doleance = ?', [id_statut, id]);
-    await pool.execute(
-      `INSERT INTO historique_statuts (id_doleance, id_statut_ancien, id_statut_nouveau, commentaire, date_changement) 
-       VALUES (?, ?, ?, ?, NOW())`,
-      [id, oldStatut[0]?.id_statut || null, id_statut, commentaire || 'Mise à jour du statut']
-    );
+    const oldStatut = await doleanceModel.getCurrentStatut(id);
+    await doleanceModel.updateStatut(id, id_statut);
+    await historiqueModel.createDirect({
+      id_doleance: Number(id),
+      id_statut_ancien: oldStatut[0]?.id_statut || null,
+      id_statut_nouveau: Number(id_statut),
+      commentaire: commentaire || 'Mise à jour du statut'
+    });
 
     res.json({ success: true, message: 'Statut mis à jour avec succès' });
   } catch (error) {
@@ -997,11 +578,7 @@ const addReponse = async (req, res) => {
     const { message } = req.body;
     const userId = req.user?.id_utilisateur || 1;
 
-    await pool.execute(
-      `INSERT INTO reponses (id_doleance, id_utilisateur, message, date_reponse) 
-       VALUES (?, ?, ?, NOW())`,
-      [id, userId, message]
-    );
+    await reponseModel.create({ id_doleance: id, id_utilisateur: userId, message });
 
     res.status(201).json({ success: true, message: 'Réponse ajoutée avec succès' });
   } catch (error) {
@@ -1019,12 +596,7 @@ const addSatisfaction = async (req, res) => {
       return res.status(400).json({ success: false, message: 'La note doit être comprise entre 1 et 5' });
     }
 
-    await pool.execute(
-      `UPDATE doleances 
-       SET satisfaction_note = ?, satisfaction_commentaire = ?, date_satisfaction = NOW()
-       WHERE id_doleance = ?`,
-      [note, commentaire || null, id]
-    );
+    await doleanceModel.addSatisfaction(id, note, commentaire);
 
     res.json({ success: true, message: 'Merci pour votre évaluation !' });
   } catch (error) {
@@ -1038,23 +610,11 @@ const deleteDoleance = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Supprimer les pièces jointes
-    const [pieces] = await pool.execute('SELECT chemin_fichier FROM pieces_jointes WHERE id_doleance = ?', [id]);
-    for (const piece of pieces) {
-      try {
-        if (fs.existsSync(piece.chemin_fichier)) {
-          fs.unlinkSync(piece.chemin_fichier);
-        }
-      } catch (err) {
-        console.warn('Impossible de supprimer le fichier:', piece.chemin_fichier, err.message);
-      }
-    }
-
-    await pool.execute('DELETE FROM pieces_jointes WHERE id_doleance = ?', [id]);
+    await pieceJointeModel.deleteByDoleanceId(id);
     await pool.execute('DELETE FROM reponses WHERE id_doleance = ?', [id]);
     await pool.execute('DELETE FROM historique_statuts WHERE id_doleance = ?', [id]);
     await pool.execute('DELETE FROM transferts WHERE id_doleance = ?', [id]);
-    await pool.execute('DELETE FROM doleances WHERE id_doleance = ?', [id]);
+    await doleanceModel.deleteById(id);
 
     res.json({ success: true, message: 'Doléance supprimée avec succès' });
   } catch (error) {
@@ -1072,28 +632,24 @@ const updatePriorite = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Priorité requise' });
     }
 
-    const [doleance] = await pool.execute('SELECT reference FROM doleances WHERE id_doleance = ?', [id]);
+    const doleance = await doleanceModel.findById(id);
     if (doleance.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
-    const [priorite] = await pool.execute('SELECT nom_priorite FROM priorites WHERE id_priorite = ?', [id_priorite]);
-    if (priorite.length === 0) {
+    const priorites = await referenceModel.getPriorites();
+    const priorite = priorites.find(p => p.id_priorite === Number(id_priorite));
+    if (!priorite) {
       return res.status(400).json({ success: false, message: 'Priorité invalide' });
     }
 
-    const prioriteNom = priorite[0].nom_priorite;
-    await pool.execute('UPDATE doleances SET id_priorite = ? WHERE id_doleance = ?', [id_priorite, id]);
-    await pool.execute(
-      `INSERT INTO historique_statuts (id_doleance, commentaire, date_changement) 
-       VALUES (?, ?, NOW())`,
-      [id, `Priorité modifiée : ${prioriteNom}`]
-    );
+    await doleanceModel.updatePriorite(id, id_priorite);
+    await historiqueModel.createSimple(id, `Priorité modifiée : ${priorite.nom_priorite}`);
 
     res.json({
       success: true,
-      message: `Priorité de la doléance ${doleance[0].reference} mise à jour en ${prioriteNom}`,
-      data: { id_priorite, nom_priorite: prioriteNom }
+      message: `Priorité de la doléance ${doleance[0].reference} mise à jour en ${priorite.nom_priorite}`,
+      data: { id_priorite, nom_priorite: priorite.nom_priorite }
     });
   } catch (error) {
     console.error('Update priorite error:', error);
@@ -1101,10 +657,58 @@ const updatePriorite = async (req, res) => {
   }
 };
 
+// ========== STATISTIQUES ==========
+const getStatsOverview = async (req, res) => {
+  try {
+    const [total] = await pool.execute('SELECT COUNT(*) as total FROM doleances');
+    const [enAttente] = await pool.execute(
+      "SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')"
+    );
+    const [enCours] = await pool.execute(
+      "SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours')"
+    );
+    const [resolues] = await pool.execute(
+      "SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue')"
+    );
+
+    const [parCategorie] = await pool.execute(`
+      SELECT c.nom_categorie, COUNT(d.id_doleance) as total
+      FROM categories_doleance c
+      LEFT JOIN doleances d ON c.id_categorie = d.id_categorie
+      GROUP BY c.id_categorie
+      ORDER BY total DESC
+      LIMIT 5
+    `);
+
+    const [parPriorite] = await pool.execute(`
+      SELECT p.nom_priorite, p.niveau, COUNT(d.id_doleance) as total
+      FROM priorites p
+      LEFT JOIN doleances d ON p.id_priorite = d.id_priorite
+      GROUP BY p.id_priorite
+      ORDER BY p.niveau DESC
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        total: total[0].total || 0,
+        en_attente: enAttente[0].en_attente || 0,
+        en_cours: enCours[0].en_cours || 0,
+        resolues: resolues[0].resolues || 0,
+        par_categorie: parCategorie || [],
+        par_priorite: parPriorite || []
+      }
+    });
+  } catch (error) {
+    console.error('Stats error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ========== DONNÉES DE RÉFÉRENCE ==========
 const getCategories = async (req, res) => {
   try {
-    const [data] = await pool.execute('SELECT * FROM categories_doleance ORDER BY nom_categorie');
+    const data = await referenceModel.getCategories();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1113,7 +717,7 @@ const getCategories = async (req, res) => {
 
 const getStatuts = async (req, res) => {
   try {
-    const [data] = await pool.execute('SELECT * FROM statuts ORDER BY ordre');
+    const data = await referenceModel.getStatuts();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1122,7 +726,7 @@ const getStatuts = async (req, res) => {
 
 const getPriorites = async (req, res) => {
   try {
-    const [data] = await pool.execute('SELECT * FROM priorites ORDER BY niveau');
+    const data = await referenceModel.getPriorites();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1131,7 +735,7 @@ const getPriorites = async (req, res) => {
 
 const getDirections = async (req, res) => {
   try {
-    const [data] = await pool.execute('SELECT * FROM directions WHERE actif = 1 ORDER BY nom_direction');
+    const data = await referenceModel.getDirections();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1140,11 +744,7 @@ const getDirections = async (req, res) => {
 
 const getQuartiers = async (req, res) => {
   try {
-    const [data] = await pool.execute(`
-      SELECT q.*, a.nom_arrondissement 
-      FROM quartiers q
-      LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
-    `);
+    const data = await referenceModel.getQuartiers();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1153,7 +753,7 @@ const getQuartiers = async (req, res) => {
 
 const getRoles = async (req, res) => {
   try {
-    const [data] = await pool.execute('SELECT * FROM roles');
+    const data = await referenceModel.getRoles();
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });
@@ -1188,5 +788,6 @@ module.exports = {
   downloadPieceJointe,
   deletePieceJointe,
   sendReferenceByContact,
-  getSuggestions
+  getSuggestions,
+  getStatsOverview
 };

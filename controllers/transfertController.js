@@ -1,5 +1,9 @@
 // controllers/transfertController.js
 const { pool } = require('../config/database');
+const doleanceModel = require('../models/doleanceModel');
+const directionModel = require('../models/directionModel');
+const serviceModel = require('../models/serviceModel');
+const historiqueModel = require('../models/historiqueModel');
 
 // Récupérer les doléances à transférer
 const getDoleancesATransferer = async (req, res) => {
@@ -45,58 +49,39 @@ const transfererVersDirection = async (req, res) => {
   try {
     const { id } = req.params;
     const { id_direction, motif, commentaire } = req.body;
-    const userId = req.user?.id_utilisateur || req.user?.id || 1;
-    
+
     console.log('🔄 Transfert direction - ID doléance:', id, 'ID direction:', id_direction);
-    
-    // Vérifier si la doléance existe
-    const [doleance] = await pool.execute(
-      'SELECT id_direction, reference, titre FROM doleances WHERE id_doleance = ?',
-      [id]
-    );
-    
+
+    const doleance = await doleanceModel.findById(id);
+
     if (doleance.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
-    
-    // Vérifier si la direction destination existe
-    const [directionDest] = await pool.execute(
-      'SELECT id_direction, nom_direction FROM directions WHERE id_direction = ?',
-      [id_direction]
-    );
-    
+
+    const directionDest = await directionModel.findById(id_direction);
+
     if (directionDest.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction de destination non trouvée' });
     }
-    
+
     const directionSource = doleance[0].id_direction;
     const reference = doleance[0].reference;
-    
-    // Récupérer le nom de la direction source
+
     let sourceNom = 'Non assignée';
     if (directionSource) {
-      const [sourceDir] = await pool.execute(
-        'SELECT nom_direction FROM directions WHERE id_direction = ?',
-        [directionSource]
-      );
+      const sourceDir = await directionModel.findById(directionSource);
       if (sourceDir.length > 0) sourceNom = sourceDir[0].nom_direction;
     }
-    
-    // Mettre à jour la doléance
+
     await pool.execute(
       'UPDATE doleances SET id_direction = ? WHERE id_doleance = ?',
       [id_direction, id]
     );
-    
-    // Ajouter dans l'historique
+
     const historiqueMessage = `Doléance transférée de "${sourceNom}" vers "${directionDest[0].nom_direction}" - Motif: ${motif || 'Transfert par agent central'}${commentaire ? ' - Commentaire: ' + commentaire : ''}`;
-    
-    await pool.execute(
-      `INSERT INTO historique_statuts (id_doleance, commentaire, date_changement) 
-       VALUES (?, ?, NOW())`,
-      [id, historiqueMessage]
-    );
-    
+
+    await historiqueModel.createSimple(id, historiqueMessage);
+
     console.log('✅ Doléance transférée avec succès');
     
     res.json({ 
@@ -119,50 +104,32 @@ const transfererVersService = async (req, res) => {
   try {
     const { id } = req.params;
     const { id_service, motif, commentaire } = req.body;
-    const userId = req.user?.id_utilisateur || req.user?.id || 1;
-    
+
     console.log('🔄 Transfert service - ID doléance:', id, 'ID service:', id_service);
-    
-    // Vérifier si la doléance existe
-    const [doleance] = await pool.execute(
-      'SELECT reference, titre FROM doleances WHERE id_doleance = ?',
-      [id]
-    );
-    
+
+    const doleance = await doleanceModel.findById(id);
+
     if (doleance.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
-    
-    // Vérifier si le service existe
-    const [service] = await pool.execute(
-      `SELECT s.*, d.nom_direction, d.id_direction 
-       FROM services s
-       LEFT JOIN directions d ON s.id_direction = d.id_direction
-       WHERE s.id_service = ?`,
-      [id_service]
-    );
-    
+
+    const service = await serviceModel.findById(id_service);
+
     if (service.length === 0) {
       return res.status(404).json({ success: false, message: 'Service non trouvé' });
     }
-    
-    // Mettre à jour la doléance
+
     await pool.execute(
       `UPDATE doleances 
        SET id_service = ?, id_direction = ?
        WHERE id_doleance = ?`,
       [id_service, service[0].id_direction, id]
     );
-    
-    // Ajouter dans l'historique
-    const historiqueMessage = `Doléance transférée vers le service: ${service[0].nom_service} (${service[0].nom_direction}) - Motif: ${motif || 'Transfert par agent central'}${commentaire ? ' - Commentaire: ' + commentaire : ''}`;
-    
-    await pool.execute(
-      `INSERT INTO historique_statuts (id_doleance, commentaire, date_changement) 
-       VALUES (?, ?, NOW())`,
-      [id, historiqueMessage]
-    );
-    
+
+    const historiqueMessage = `Doléance transférée vers le service: ${service[0].nom_service} (${service[0].direction_nom}) - Motif: ${motif || 'Transfert par agent central'}${commentaire ? ' - Commentaire: ' + commentaire : ''}`;
+
+    await historiqueModel.createSimple(id, historiqueMessage);
+
     console.log('✅ Doléance transférée vers service avec succès');
     
     res.json({ 
@@ -239,7 +206,6 @@ const annulerTransfert = async (req, res) => {
     const { id } = req.params;
     const { motif_annulation } = req.body;
     
-    // Récupérer le transfert dans l'historique
     const [transfert] = await pool.execute(
       `SELECT h.*, d.reference, d.id_direction 
        FROM historique_statuts h
@@ -252,11 +218,9 @@ const annulerTransfert = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Transfert non trouvé' });
     }
     
-    // Ajouter un commentaire d'annulation
-    await pool.execute(
-      `INSERT INTO historique_statuts (id_doleance, commentaire, date_changement) 
-       VALUES (?, ?, NOW())`,
-      [transfert[0].id_doleance, `Transfert annulé - Motif: ${motif_annulation || 'Annulation par agent central'}`]
+    await historiqueModel.createSimple(
+      transfert[0].id_doleance,
+      `Transfert annulé - Motif: ${motif_annulation || 'Annulation par agent central'}`
     );
     
     res.json({ 
@@ -273,14 +237,12 @@ const annulerTransfert = async (req, res) => {
 // Statistiques des transferts
 const getStatsTransferts = async (req, res) => {
   try {
-    // Total des transferts
     const [total] = await pool.execute(`
       SELECT COUNT(*) as total 
       FROM historique_statuts 
       WHERE commentaire LIKE '%transférée%'
     `);
     
-    // Transferts par mois
     const [parMois] = await pool.execute(`
       SELECT 
         DATE_FORMAT(date_changement, '%Y-%m') as mois,

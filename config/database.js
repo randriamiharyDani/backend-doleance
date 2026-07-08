@@ -337,10 +337,33 @@ const createTables = async () => {
   console.log('✅ Tables créées/vérifiées');
 };
 
+// Migration : ajout des colonnes manquantes
+const runMigrations = async () => {
+  const migrations = [
+    `ALTER TABLE citoyens ADD COLUMN IF NOT EXISTS identifiant_citoyen VARCHAR(50) NULL AFTER id_citoyen`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_satisfaction TIMESTAMP NULL AFTER satisfaction_commentaire`,
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS actif BOOLEAN DEFAULT TRUE AFTER description`
+  ];
+
+  for (const sql of migrations) {
+    try {
+      // On tente sans IF NOT EXISTS pour MySQL/MariaDB qui ne le supporte pas toujours
+      await promisePool.execute(sql.replace('ADD COLUMN IF NOT EXISTS', 'ADD COLUMN'));
+    } catch (err) {
+      // Ignorer si la colonne existe déjà (duplicate column)
+      if (err.errno !== 1060) {
+        console.warn('⚠️ Migration warning:', err.message);
+      }
+    }
+  }
+  console.log('✅ Migrations exécutées');
+};
+
 // Initialisation complète de la base de données
 const initDatabase = async () => {
   try {
     await createTables();
+    await runMigrations();
     await insertInitialData();
     console.log('✅ Base de données initialisée avec succès');
   } catch (error) {

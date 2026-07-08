@@ -1,0 +1,352 @@
+const { pool } = require('../config/database');
+
+const generateReference = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+  return `DOL-${year}${month}${day}-${random}`;
+};
+
+const directionParCategorie = {
+  1: 1, 2: 2, 3: 2, 4: 2, 5: 4, 6: 3, 7: 5, 8: 6
+};
+
+const findById = async (id) => {
+  const [rows] = await pool.execute(
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur,
+            p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction,
+            ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
+            ct.email as citoyen_email, ct.telephone as citoyen_telephone,
+            ct.adresse as citoyen_adresse
+     FROM doleances d
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+     WHERE d.id_doleance = ?`,
+    [id]
+  );
+  return rows;
+};
+
+const findByReference = async (reference) => {
+  const [rows] = await pool.execute(
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie
+     FROM doleances d
+     JOIN statuts s ON d.id_statut = s.id_statut
+     JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     WHERE d.reference = ?`,
+    [reference]
+  );
+  return rows;
+};
+
+const findByReferenceAndCitoyen = async (reference, id_citoyen) => {
+  const [rows] = await pool.execute(
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction
+     FROM doleances d
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+     WHERE d.reference = ? AND d.id_citoyen = ?`,
+    [reference, id_citoyen]
+  );
+  return rows;
+};
+
+const findByCitoyenId = async (id_citoyen) => {
+  const [rows] = await pool.execute(
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction
+     FROM doleances d
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+     WHERE d.id_citoyen = ?
+     ORDER BY d.date_creation DESC`,
+    [id_citoyen]
+  );
+  return rows;
+};
+
+const listPublic = async ({ categorie, statut, search, page = 1, limit = 10, sort = 'date_desc' }) => {
+  let query = `
+    SELECT 
+      d.id_doleance, d.reference, d.titre, d.description, d.date_creation, d.date_mise_a_jour,
+      s.id_statut, s.nom_statut, s.couleur as statut_couleur,
+      p.id_priorite, p.nom_priorite, p.niveau,
+      c.id_categorie, c.nom_categorie,
+      dir.id_direction, dir.nom_direction
+    FROM doleances d
+    LEFT JOIN statuts s ON d.id_statut = s.id_statut
+    LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+    LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+    LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
+  if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
+  if (search) {
+    query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+
+  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
+  const countParams = [];
+  if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
+  if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
+  if (search) {
+    countQuery += ' AND (reference LIKE ? OR titre LIKE ? OR description LIKE ?)';
+    const term = `%${search}%`;
+    countParams.push(term, term, term);
+  }
+  const [countResult] = await pool.execute(countQuery, countParams);
+  const total = countResult[0]?.total || 0;
+
+  const orderMap = {
+    'date_desc': 'd.date_creation DESC',
+    'date_asc': 'd.date_creation ASC',
+    'priorite_desc': 'p.niveau DESC, d.date_creation DESC',
+    'priorite_asc': 'p.niveau ASC, d.date_creation DESC'
+  };
+  const orderBy = orderMap[sort] || 'd.date_creation DESC';
+
+  const offset = (Number(page) - 1) * Number(limit);
+  query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+  params.push(Number(limit), offset);
+
+  const [rows] = await pool.execute(query, params);
+  return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
+};
+
+const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorite, search, userId, userRole }) => {
+  let query = `
+    SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
+           CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
+           ct.email as citoyen_email, ct.telephone as citoyen_telephone,
+           dir.nom_direction
+    FROM doleances d
+    LEFT JOIN statuts s ON d.id_statut = s.id_statut
+    LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+    LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+    LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+    LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+    WHERE 1=1
+  `;
+  const params = [];
+
+  const adminRoles = ['administrateur_systeme', 'agent_central', 'administrateur'];
+  let directionId = null;
+
+  if (!adminRoles.includes(userRole)) {
+    const [user] = await pool.execute('SELECT id_direction FROM utilisateurs WHERE id_utilisateur = ?', [userId]);
+    directionId = user[0]?.id_direction;
+    if (directionId) {
+      query += ' AND d.id_direction = ?';
+      params.push(directionId);
+    }
+  }
+
+  if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
+  if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
+  if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
+  if (search) {
+    query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+
+  let countWhere = '';
+  const countParams = [];
+  if (!adminRoles.includes(userRole) && directionId) {
+    countWhere += ' AND d.id_direction = ?';
+    countParams.push(directionId);
+  }
+  if (categorie) { countWhere += ' AND d.id_categorie = ?'; countParams.push(Number(categorie)); }
+  if (statut) { countWhere += ' AND d.id_statut = ?'; countParams.push(Number(statut)); }
+  if (priorite) { countWhere += ' AND d.id_priorite = ?'; countParams.push(Number(priorite)); }
+  if (search) {
+    countWhere += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
+    const term = `%${search}%`;
+    countParams.push(term, term, term);
+  }
+
+  const [countResult] = await pool.execute(
+    `SELECT COUNT(*) as total FROM doleances d WHERE 1=1 ${countWhere}`,
+    countParams
+  );
+  const total = countResult[0]?.total || 0;
+
+  const offset = (Number(page) - 1) * Number(limit);
+  query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
+  params.push(Number(limit), offset);
+
+  const [rows] = await pool.execute(query, params);
+  return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
+};
+
+const list = async ({ page = 1, limit = 10, categorie, statut, priorite, search }) => {
+  let query = `
+    SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
+           CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
+           ct.email as citoyen_email, ct.telephone as citoyen_telephone,
+           dir.nom_direction
+    FROM doleances d
+    LEFT JOIN statuts s ON d.id_statut = s.id_statut
+    LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+    LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+    LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+    LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
+  if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
+  if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
+  if (search) {
+    query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+
+  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
+  const countParams = [];
+  if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
+  if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
+  if (priorite) { countQuery += ' AND id_priorite = ?'; countParams.push(Number(priorite)); }
+  if (search) {
+    countQuery += ' AND (reference LIKE ? OR titre LIKE ? OR description LIKE ?)';
+    const term = `%${search}%`;
+    countParams.push(term, term, term);
+  }
+  const [countResult] = await pool.execute(countQuery, countParams);
+  const total = countResult[0]?.total || 0;
+
+  const offset = (Number(page) - 1) * Number(limit);
+  query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
+  params.push(Number(limit), offset);
+
+  const [rows] = await pool.execute(query, params);
+  return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
+};
+
+const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search }) => {
+  const offset = (Number(page) - 1) * Number(limit);
+
+  let query = `
+    SELECT d.*, 
+           s.nom_statut, s.couleur as statut_couleur,
+           c.nom_categorie,
+           CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
+           ct.telephone as citoyen_telephone
+    FROM doleances d
+    LEFT JOIN statuts s ON d.id_statut = s.id_statut
+    LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+    LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+    WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
+  `;
+  const params = [];
+
+  if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
+  if (search) {
+    query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+
+  const [countResult] = await pool.execute(
+    `SELECT COUNT(*) as total FROM doleances d 
+     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')`
+  );
+  const total = countResult[0]?.total || 0;
+
+  query += ' ORDER BY d.date_creation ASC LIMIT ? OFFSET ?';
+  params.push(Number(limit), offset);
+
+  const [rows] = await pool.execute(query, params);
+  return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
+};
+
+const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut }) => {
+  const defaultPriorite = 2;
+  const [result] = await connection.execute(
+    `INSERT INTO doleances 
+     (reference, titre, description, id_citoyen, id_categorie, id_priorite, 
+      id_quartier, id_direction, id_statut)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [reference, titre, description, id_citoyen, Number(id_categorie), defaultPriorite,
+     id_quartier, id_direction, id_statut]
+  );
+  return result.insertId;
+};
+
+const updateStatut = async (id_doleance, id_statut) => {
+  await pool.execute(
+    'UPDATE doleances SET id_statut = ?, date_mise_a_jour = NOW() WHERE id_doleance = ?',
+    [id_statut, id_doleance]
+  );
+};
+
+const getCurrentStatut = async (id_doleance) => {
+  const [rows] = await pool.execute('SELECT id_statut FROM doleances WHERE id_doleance = ?', [id_doleance]);
+  return rows;
+};
+
+const updatePriorite = async (id_doleance, id_priorite) => {
+  await pool.execute('UPDATE doleances SET id_priorite = ? WHERE id_doleance = ?', [id_priorite, id_doleance]);
+};
+
+const updateDirectionAndStatut = async (connection, id_doleance, id_direction, id_statut) => {
+  await connection.execute(
+    `UPDATE doleances 
+     SET id_direction = ?, id_statut = ?, date_mise_a_jour = NOW()
+     WHERE id_doleance = ?`,
+    [Number(id_direction), id_statut, Number(id_doleance)]
+  );
+};
+
+const addSatisfaction = async (id_doleance, note, commentaire) => {
+  await pool.execute(
+    `UPDATE doleances 
+     SET satisfaction_note = ?, satisfaction_commentaire = ?, date_mise_a_jour = NOW()
+     WHERE id_doleance = ?`,
+    [note, commentaire || null, id_doleance]
+  );
+};
+
+const deleteById = async (id_doleance) => {
+  await pool.execute('DELETE FROM doleances WHERE id_doleance = ?', [id_doleance]);
+};
+
+const searchSuggestions = async (q) => {
+  const searchTerm = `%${q}%`;
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT titre as suggestion 
+     FROM doleances 
+     WHERE titre LIKE ? OR description LIKE ?
+     LIMIT 10`,
+    [searchTerm, searchTerm]
+  );
+  return rows.map(s => s.suggestion);
+};
+
+const getDefaultDirection = async (id_categorie) => {
+  return directionParCategorie[Number(id_categorie)] || 1;
+};
+
+module.exports = {
+  generateReference, findById, findByReference, findByReferenceAndCitoyen,
+  findByCitoyenId, listPublic, listBackoffice, list, listEnAttenteTransfert,
+  create, updateStatut, getCurrentStatut, updatePriorite,
+  updateDirectionAndStatut, addSatisfaction, deleteById,
+  searchSuggestions, getDefaultDirection
+};

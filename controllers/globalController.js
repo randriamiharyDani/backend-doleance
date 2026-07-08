@@ -1,15 +1,18 @@
 const { pool } = require('../config/database');
+const utilisateurModel = require('../models/utilisateurModel');
+const roleModel = require('../models/roleModel');
+const directionModel = require('../models/directionModel');
+const doleanceModel = require('../models/doleanceModel');
+const referenceModel = require('../models/referenceModel');
+const historiqueModel = require('../models/historiqueModel');
+const notificationModel = require('../models/notificationModel');
+const logModel = require('../models/logModel');
+const pieceJointeModel = require('../models/pieceJointeModel');
 
 // ==================== 1. TABLE utilisateurs ====================
 const getUtilisateurs = async (req, res) => {
   try {
-    const [users] = await pool.execute(`
-      SELECT u.*, r.nom_role as role_nom, d.nom_direction 
-      FROM utilisateurs u
-      LEFT JOIN roles r ON u.id_role = r.id_role
-      LEFT JOIN directions d ON u.id_direction = d.id_direction
-      ORDER BY u.date_creation DESC
-    `);
+    const users = await utilisateurModel.findAll();
     res.json({ success: true, data: users });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -19,14 +22,7 @@ const getUtilisateurs = async (req, res) => {
 const getUtilisateurById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [users] = await pool.execute(
-      `SELECT u.*, r.nom_role as role_nom, d.nom_direction 
-       FROM utilisateurs u
-       LEFT JOIN roles r ON u.id_role = r.id_role
-       LEFT JOIN directions d ON u.id_direction = d.id_direction
-       WHERE u.id_utilisateur = ?`,
-      [id]
-    );
+    const users = await utilisateurModel.findById(id);
     res.json({ success: true, data: users[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -35,16 +31,11 @@ const getUtilisateurById = async (req, res) => {
 
 const createUtilisateur = async (req, res) => {
   try {
-    const { nom, prenom, email, mot_de_passe, telephone, id_role, id_direction, actif } = req.body;
+    const { nom, prenom, email, mot_de_passe, telephone, id_role, id_direction } = req.body;
     const bcrypt = require('bcryptjs');
     const hashedPassword = await bcrypt.hash(mot_de_passe, 10);
-    
-    const [result] = await pool.execute(
-      `INSERT INTO utilisateurs (nom, prenom, email, mot_de_passe, telephone, id_role, id_direction, actif)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nom, prenom, email, hashedPassword, telephone, id_role, id_direction, actif || 1]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const id = await utilisateurModel.create({ nom, prenom, email, mot_de_passe: hashedPassword, telephone, id_role, id_direction });
+    res.status(201).json({ success: true, data: { id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -54,12 +45,7 @@ const updateUtilisateur = async (req, res) => {
   try {
     const { id } = req.params;
     const { nom, prenom, email, telephone, id_role, id_direction, actif } = req.body;
-    
-    await pool.execute(
-      `UPDATE utilisateurs SET nom=?, prenom=?, email=?, telephone=?, id_role=?, id_direction=?, actif=?
-       WHERE id_utilisateur = ?`,
-      [nom, prenom, email, telephone, id_role, id_direction, actif, id]
-    );
+    await utilisateurModel.update(id, { nom, prenom, email, telephone, id_role, id_direction, actif });
     res.json({ success: true, message: 'Utilisateur mis à jour' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -69,7 +55,7 @@ const updateUtilisateur = async (req, res) => {
 const deleteUtilisateur = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.execute('DELETE FROM utilisateurs WHERE id_utilisateur = ?', [id]);
+    await utilisateurModel.deleteById(id);
     res.json({ success: true, message: 'Utilisateur supprimé' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -79,7 +65,7 @@ const deleteUtilisateur = async (req, res) => {
 // ==================== 2. TABLE roles ====================
 const getRoles = async (req, res) => {
   try {
-    const [roles] = await pool.execute('SELECT * FROM roles ORDER BY id_role');
+    const roles = await roleModel.findAll();
     res.json({ success: true, data: roles });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -89,7 +75,7 @@ const getRoles = async (req, res) => {
 const getRoleById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [roles] = await pool.execute('SELECT * FROM roles WHERE id_role = ?', [id]);
+    const roles = await roleModel.findById(id);
     res.json({ success: true, data: roles[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -99,11 +85,8 @@ const getRoleById = async (req, res) => {
 const createRole = async (req, res) => {
   try {
     const { nom_role, description, permissions, is_system } = req.body;
-    const [result] = await pool.execute(
-      'INSERT INTO roles (nom_role, description, permissions, is_system) VALUES (?, ?, ?, ?)',
-      [nom_role, description, JSON.stringify(permissions || {}), is_system || 0]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const id = await roleModel.create({ nom_role, description, permissions: JSON.stringify(permissions || {}), is_system: is_system || 0 });
+    res.status(201).json({ success: true, data: { id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -126,7 +109,7 @@ const updateRole = async (req, res) => {
 const deleteRole = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.execute('DELETE FROM roles WHERE id_role = ?', [id]);
+    await roleModel.deleteById(id);
     res.json({ success: true, message: 'Rôle supprimé' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -136,7 +119,7 @@ const deleteRole = async (req, res) => {
 // ==================== 3. TABLE directions ====================
 const getDirections = async (req, res) => {
   try {
-    const [directions] = await pool.execute('SELECT * FROM directions ORDER BY nom_direction');
+    const directions = await directionModel.findAll();
     res.json({ success: true, data: directions });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -146,7 +129,7 @@ const getDirections = async (req, res) => {
 const getDirectionById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [directions] = await pool.execute('SELECT * FROM directions WHERE id_direction = ?', [id]);
+    const directions = await directionModel.findById(id);
     res.json({ success: true, data: directions[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -156,11 +139,8 @@ const getDirectionById = async (req, res) => {
 const createDirection = async (req, res) => {
   try {
     const { nom_direction, description } = req.body;
-    const [result] = await pool.execute(
-      'INSERT INTO directions (nom_direction, description) VALUES (?, ?)',
-      [nom_direction, description]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const id = await directionModel.create({ nom_direction, description });
+    res.status(201).json({ success: true, data: { id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -170,10 +150,7 @@ const updateDirection = async (req, res) => {
   try {
     const { id } = req.params;
     const { nom_direction, description } = req.body;
-    await pool.execute(
-      'UPDATE directions SET nom_direction=?, description=? WHERE id_direction=?',
-      [nom_direction, description, id]
-    );
+    await directionModel.update(id, { nom_direction, description });
     res.json({ success: true, message: 'Direction mise à jour' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -183,7 +160,7 @@ const updateDirection = async (req, res) => {
 const deleteDirection = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.execute('DELETE FROM directions WHERE id_direction = ?', [id]);
+    await directionModel.deleteById(id);
     res.json({ success: true, message: 'Direction supprimée' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -194,41 +171,8 @@ const deleteDirection = async (req, res) => {
 const getDoleances = async (req, res) => {
   try {
     const { page = 1, limit = 10, statut, categorie, priorite, search } = req.query;
-    let query = `
-      SELECT d.*, s.nom_statut, s.couleur as statut_couleur, 
-             p.nom_priorite, p.niveau,
-             c.nom_categorie,
-             dir.nom_direction,
-             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
-             q.nom_quartier,
-             a.nom_arrondissement
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
-      LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
-      WHERE 1=1
-    `;
-    const params = [];
-    
-    if (statut) { query += ' AND d.id_statut = ?'; params.push(statut); }
-    if (categorie) { query += ' AND d.id_categorie = ?'; params.push(categorie); }
-    if (priorite) { query += ' AND d.id_priorite = ?'; params.push(priorite); }
-    if (search) {
-      query += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR d.description LIKE ?)';
-      const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
-    }
-    
-    const offset = (page - 1) * limit;
-    query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
-    
-    const [doleances] = await pool.execute(query, params);
-    res.json({ success: true, data: doleances });
+    const result = await doleanceModel.list({ page, limit, categorie, statut, priorite, search });
+    res.json({ success: true, data: result.data, pagination: { total: result.total, page: result.page, limit: result.limit, pages: result.pages } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -237,17 +181,7 @@ const getDoleances = async (req, res) => {
 const getDoleanceById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [doleances] = await pool.execute(`
-      SELECT d.*, s.nom_statut, p.nom_priorite, c.nom_categorie, dir.nom_direction,
-             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom, ct.email, ct.telephone, ct.adresse
-      FROM doleances d
-      LEFT JOIN statuts s ON d.id_statut = s.id_statut
-      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
-      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      WHERE d.id_doleance = ?
-    `, [id]);
+    const doleances = await doleanceModel.findById(id);
     res.json({ success: true, data: doleances[0] });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -256,15 +190,12 @@ const getDoleanceById = async (req, res) => {
 
 const createDoleance = async (req, res) => {
   try {
-    const { reference, titre, description, id_citoyen, id_categorie, id_priorite, 
-            id_direction, id_quartier, latitude, longitude } = req.body;
-    
+    const { reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, id_quartier, latitude, longitude } = req.body;
     const [result] = await pool.execute(
       `INSERT INTO doleances (reference, titre, description, id_citoyen, id_categorie, 
        id_priorite, id_direction, id_quartier, latitude, longitude, id_statut)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [reference, titre, description, id_citoyen, id_categorie, id_priorite, 
-       id_direction, id_quartier, latitude, longitude]
+      [reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, id_quartier, latitude, longitude]
     );
     res.status(201).json({ success: true, data: { id: result.insertId } });
   } catch (error) {
@@ -276,7 +207,6 @@ const updateDoleance = async (req, res) => {
   try {
     const { id } = req.params;
     const { id_statut, id_priorite, id_direction, satisfaction_note, satisfaction_commentaire } = req.body;
-    
     await pool.execute(
       `UPDATE doleances SET id_statut=?, id_priorite=?, id_direction=?, 
        satisfaction_note=?, satisfaction_commentaire=?, date_mise_a_jour=NOW()
@@ -292,7 +222,7 @@ const updateDoleance = async (req, res) => {
 const deleteDoleance = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.execute('DELETE FROM doleances WHERE id_doleance = ?', [id]);
+    await doleanceModel.deleteById(id);
     res.json({ success: true, message: 'Doléance supprimée' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -335,7 +265,7 @@ const createCitoyen = async (req, res) => {
 // ==================== 6. TABLE categories_doleance ====================
 const getCategories = async (req, res) => {
   try {
-    const [categories] = await pool.execute('SELECT * FROM categories_doleance ORDER BY nom_categorie');
+    const categories = await referenceModel.getCategories();
     res.json({ success: true, data: categories });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -368,7 +298,7 @@ const createCategorie = async (req, res) => {
 // ==================== 7. TABLE statuts ====================
 const getStatuts = async (req, res) => {
   try {
-    const [statuts] = await pool.execute('SELECT * FROM statuts ORDER BY ordre');
+    const statuts = await referenceModel.getStatuts();
     res.json({ success: true, data: statuts });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -378,7 +308,7 @@ const getStatuts = async (req, res) => {
 // ==================== 8. TABLE priorites ====================
 const getPriorites = async (req, res) => {
   try {
-    const [priorites] = await pool.execute('SELECT * FROM priorites ORDER BY niveau');
+    const priorites = await referenceModel.getPriorites();
     res.json({ success: true, data: priorites });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -388,11 +318,7 @@ const getPriorites = async (req, res) => {
 // ==================== 9. TABLE quartiers ====================
 const getQuartiers = async (req, res) => {
   try {
-    const [quartiers] = await pool.execute(`
-      SELECT q.*, a.nom_arrondissement 
-      FROM quartiers q
-      LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
-    `);
+    const quartiers = await referenceModel.getQuartiers();
     res.json({ success: true, data: quartiers });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -472,15 +398,7 @@ const createAssignation = async (req, res) => {
 const getHistoriqueStatuts = async (req, res) => {
   try {
     const { id_doleance } = req.query;
-    const [historique] = await pool.execute(
-      `SELECT h.*, s_ancien.nom_statut as ancien_statut, s_nouveau.nom_statut as nouveau_statut
-       FROM historique_statuts h
-       LEFT JOIN statuts s_ancien ON h.id_statut_ancien = s_ancien.id_statut
-       LEFT JOIN statuts s_nouveau ON h.id_statut_nouveau = s_nouveau.id_statut
-       WHERE h.id_doleance = ?
-       ORDER BY h.date_changement ASC`,
-      [id_doleance]
-    );
+    const historique = await historiqueModel.findByDoleanceId(id_doleance);
     res.json({ success: true, data: historique });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -538,7 +456,7 @@ const createTransfert = async (req, res) => {
 const getPiecesJointes = async (req, res) => {
   try {
     const { id_doleance } = req.query;
-    const [pieces] = await pool.execute('SELECT * FROM pieces_jointes WHERE id_doleance = ?', [id_doleance]);
+    const pieces = await pieceJointeModel.findByDoleanceId(id_doleance);
     res.json({ success: true, data: pieces });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -561,7 +479,7 @@ const createPieceJointe = async (req, res) => {
 const deletePieceJointe = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.execute('DELETE FROM pieces_jointes WHERE id_piece = ?', [id]);
+    await pieceJointeModel.deleteById(id);
     res.json({ success: true, message: 'Pièce jointe supprimée' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -603,10 +521,7 @@ const createCommentaireInterne = async (req, res) => {
 const getNotifications = async (req, res) => {
   try {
     const { id_destinataire } = req.query;
-    const [notifications] = await pool.execute(
-      'SELECT * FROM notifications WHERE id_destinataire = ? ORDER BY date_notification DESC',
-      [id_destinataire]
-    );
+    const notifications = await notificationModel.findByUser(id_destinataire);
     res.json({ success: true, data: notifications });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -616,11 +531,8 @@ const getNotifications = async (req, res) => {
 const createNotification = async (req, res) => {
   try {
     const { id_destinataire, id_doleance, type, titre, message, donnees } = req.body;
-    const [result] = await pool.execute(
-      'INSERT INTO notifications (id_destinataire, id_doleance, type, titre, message, donnees) VALUES (?, ?, ?, ?, ?, ?)',
-      [id_destinataire, id_doleance, type, titre, message, JSON.stringify(donnees || {})]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const id = await notificationModel.create({ id_destinataire, id_doleance, type, titre, message, donnees });
+    res.status(201).json({ success: true, data: { id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -640,12 +552,16 @@ const markNotificationAsRead = async (req, res) => {
 const getLogsActivites = async (req, res) => {
   try {
     const { id_utilisateur, limit = 50 } = req.query;
-    let query = 'SELECT * FROM logs_activites WHERE 1=1';
-    const params = [];
-    if (id_utilisateur) { query += ' AND id_utilisateur = ?'; params.push(id_utilisateur); }
-    query += ' ORDER BY date_action DESC LIMIT ?';
-    params.push(parseInt(limit));
-    const [logs] = await pool.execute(query, params);
+    let logs;
+    if (id_utilisateur) {
+      logs = await logModel.findByUser(id_utilisateur, { page: 1, limit: parseInt(limit) });
+    } else {
+      const [rows] = await pool.execute(
+        'SELECT * FROM logs_activites ORDER BY date_action DESC LIMIT ?',
+        [parseInt(limit)]
+      );
+      logs = rows;
+    }
     res.json({ success: true, data: logs });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -655,51 +571,30 @@ const getLogsActivites = async (req, res) => {
 const createLogActivite = async (req, res) => {
   try {
     const { id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent } = req.body;
-    const [result] = await pool.execute(
-      'INSERT INTO logs_activites (id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
-      [id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const id = await logModel.create({ id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent });
+    res.status(201).json({ success: true, data: { id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 module.exports = {
-  // Utilisateurs
   getUtilisateurs, getUtilisateurById, createUtilisateur, updateUtilisateur, deleteUtilisateur,
-  // Rôles
   getRoles, getRoleById, createRole, updateRole, deleteRole,
-  // Directions
   getDirections, getDirectionById, createDirection, updateDirection, deleteDirection,
-  // Doléances
   getDoleances, getDoleanceById, createDoleance, updateDoleance, deleteDoleance,
-  // Citoyens
   getCitoyens, getCitoyenById, createCitoyen,
-  // Catégories
   getCategories, getCategorieById, createCategorie,
-  // Statuts
   getStatuts,
-  // Priorités
   getPriorites,
-  // Quartiers
   getQuartiers,
-  // Arrondissements
   getArrondissements,
-  // Réponses
   getReponses, createReponse,
-  // Assignations
   getAssignations, createAssignation,
-  // Historique
   getHistoriqueStatuts, createHistoriqueStatut,
-  // Transferts
   getTransferts, createTransfert,
-  // Pièces jointes
   getPiecesJointes, createPieceJointe, deletePieceJointe,
-  // Commentaires internes
   getCommentairesInternes, createCommentaireInterne,
-  // Notifications
   getNotifications, createNotification, markNotificationAsRead,
-  // Logs
   getLogsActivites, createLogActivite
 };

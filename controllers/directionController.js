@@ -1,23 +1,16 @@
 const { pool } = require('../config/database');
+const directionModel = require('../models/directionModel');
+const serviceModel = require('../models/serviceModel');
+const utilisateurModel = require('../models/utilisateurModel');
+const doleanceModel = require('../models/doleanceModel');
 
 // ========== DIRECTIONS ==========
 
 // Récupérer toutes les directions
 const getDirections = async (req, res) => {
   try {
-    const [directions] = await pool.execute(
-      `SELECT d.*, 
-       COUNT(DISTINCT s.id_service) as total_services,
-       COUNT(DISTINCT u.id_utilisateur) as total_agents,
-       COUNT(DISTINCT dl.id_doleance) as total_doleances
-       FROM directions d
-       LEFT JOIN services s ON d.id_direction = s.id_direction
-       LEFT JOIN utilisateurs u ON d.id_direction = u.id_direction AND u.actif = 1
-       LEFT JOIN doleances dl ON d.id_direction = dl.id_direction
-       GROUP BY d.id_direction
-       ORDER BY d.categorie, d.nom_direction`
-    );
-    
+    const directions = await directionModel.findAll();
+
     res.json({ success: true, data: directions });
   } catch (error) {
     console.error('Get directions error:', error);
@@ -29,39 +22,19 @@ const getDirections = async (req, res) => {
 const getDirectionById = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const [directions] = await pool.execute(
-      `SELECT d.*, 
-       COUNT(DISTINCT s.id_service) as total_services,
-       COUNT(DISTINCT u.id_utilisateur) as total_agents
-       FROM directions d
-       LEFT JOIN services s ON d.id_direction = s.id_direction
-       LEFT JOIN utilisateurs u ON d.id_direction = u.id_direction AND u.actif = 1
-       WHERE d.id_direction = ?
-       GROUP BY d.id_direction`,
-      [id]
-    );
-    
+
+    const directions = await directionModel.findByIdWithCounts(id);
+
     if (directions.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction non trouvée' });
     }
-    
-    const [services] = await pool.execute(
-      'SELECT * FROM services WHERE id_direction = ? ORDER BY nom_service',
-      [id]
-    );
-    
-    const [agents] = await pool.execute(
-      `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.telephone, u.actif, COALESCE(r.nom_role, 'agent') as nom_role
-       FROM utilisateurs u
-       LEFT JOIN roles r ON u.id_role = r.id_role
-       WHERE u.id_direction = ? AND u.actif = 1
-       ORDER BY u.nom, u.prenom`,
-      [id]
-    );
-    
-    res.json({ 
-      success: true, 
+
+    const services = await serviceModel.findByDirection(id);
+
+    const agents = await utilisateurModel.findByDirection(id);
+
+    res.json({
+      success: true,
       data: {
         ...directions[0],
         services,
@@ -78,22 +51,22 @@ const getDirectionById = async (req, res) => {
 const createDirection = async (req, res) => {
   try {
     const { nom_direction, description, categorie, email, telephone, responsable } = req.body;
-    
+
     if (!nom_direction) {
       return res.status(400).json({ success: false, message: 'Le nom de la direction est requis' });
     }
-    
-    const [result] = await pool.execute(
-      `INSERT INTO directions (nom_direction, description, categorie, email, telephone, responsable)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [nom_direction, description || null, categorie || null, email || null, telephone || null, responsable || null]
-    );
-    
-    const [newDirection] = await pool.execute(
-      'SELECT * FROM directions WHERE id_direction = ?',
-      [result.insertId]
-    );
-    
+
+    const insertId = await directionModel.create({
+      nom_direction,
+      description: description || null,
+      categorie: categorie || null,
+      email: email || null,
+      telephone: telephone || null,
+      responsable: responsable || null
+    });
+
+    const newDirection = await directionModel.findById(insertId);
+
     res.status(201).json({ success: true, data: newDirection[0], message: 'Direction créée avec succès' });
   } catch (error) {
     console.error('Create direction error:', error);
@@ -106,28 +79,24 @@ const updateDirection = async (req, res) => {
   try {
     const { id } = req.params;
     const { nom_direction, description, categorie, email, telephone, responsable } = req.body;
-    
-    const [existing] = await pool.execute(
-      'SELECT id_direction FROM directions WHERE id_direction = ?',
-      [id]
-    );
-    
+
+    const existing = await directionModel.findById(id);
+
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction non trouvée' });
     }
-    
-    await pool.execute(
-      `UPDATE directions 
-       SET nom_direction = ?, description = ?, categorie = ?, email = ?, telephone = ?, responsable = ?
-       WHERE id_direction = ?`,
-      [nom_direction, description || null, categorie || null, email || null, telephone || null, responsable || null, id]
-    );
-    
-    const [updatedDirection] = await pool.execute(
-      'SELECT * FROM directions WHERE id_direction = ?',
-      [id]
-    );
-    
+
+    await directionModel.update(id, {
+      nom_direction,
+      description: description || null,
+      categorie: categorie || null,
+      email: email || null,
+      telephone: telephone || null,
+      responsable: responsable || null
+    });
+
+    const updatedDirection = await directionModel.findById(id);
+
     res.json({ success: true, data: updatedDirection[0], message: 'Direction modifiée avec succès' });
   } catch (error) {
     console.error('Update direction error:', error);
@@ -139,42 +108,33 @@ const updateDirection = async (req, res) => {
 const deleteDirection = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const [existing] = await pool.execute(
-      'SELECT id_direction, nom_direction FROM directions WHERE id_direction = ?',
-      [id]
-    );
-    
+
+    const existing = await directionModel.findById(id);
+
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction non trouvée' });
     }
-    
-    const [services] = await pool.execute(
-      'SELECT COUNT(*) as count FROM services WHERE id_direction = ?',
-      [id]
-    );
-    
-    if (services[0].count > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Impossible de supprimer cette direction car elle contient ${services[0].count} service(s). Supprimez d'abord les services.` 
+
+    const servicesCount = await directionModel.countServices(id);
+
+    if (servicesCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Impossible de supprimer cette direction car elle contient ${servicesCount} service(s). Supprimez d'abord les services.`
       });
     }
-    
-    const [agents] = await pool.execute(
-      'SELECT COUNT(*) as count FROM utilisateurs WHERE id_direction = ?',
-      [id]
-    );
-    
-    if (agents[0].count > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Impossible de supprimer cette direction car elle contient ${agents[0].count} agent(s). Réaffectez d'abord les agents.` 
+
+    const agentsCount = await directionModel.countUsers(id);
+
+    if (agentsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Impossible de supprimer cette direction car elle contient ${agentsCount} agent(s). Réaffectez d'abord les agents.`
       });
     }
-    
-    await pool.execute('DELETE FROM directions WHERE id_direction = ?', [id]);
-    
+
+    await directionModel.deleteById(id);
+
     res.json({ success: true, message: `Direction "${existing[0].nom_direction}" supprimée avec succès` });
   } catch (error) {
     console.error('Delete direction error:', error);
@@ -187,13 +147,8 @@ const deleteDirection = async (req, res) => {
 // Récupérer tous les services
 const getServices = async (req, res) => {
   try {
-    const [services] = await pool.execute(
-      `SELECT s.*, d.nom_direction as direction_nom, d.categorie as direction_categorie
-       FROM services s
-       LEFT JOIN directions d ON s.id_direction = d.id_direction
-       ORDER BY d.nom_direction, s.nom_service`
-    );
-    
+    const services = await serviceModel.findAll();
+
     res.json({ success: true, data: services });
   } catch (error) {
     console.error('Get services error:', error);
@@ -205,12 +160,9 @@ const getServices = async (req, res) => {
 const getServicesByDirection = async (req, res) => {
   try {
     const { directionId } = req.params;
-    
-    const [services] = await pool.execute(
-      'SELECT * FROM services WHERE id_direction = ? ORDER BY nom_service',
-      [directionId]
-    );
-    
+
+    const services = await serviceModel.findByDirection(directionId);
+
     res.json({ success: true, data: services });
   } catch (error) {
     console.error('Get services by direction error:', error);
@@ -222,22 +174,22 @@ const getServicesByDirection = async (req, res) => {
 const createService = async (req, res) => {
   try {
     const { id_direction, nom_service, description, email, telephone, responsable } = req.body;
-    
+
     if (!nom_service || !id_direction) {
       return res.status(400).json({ success: false, message: 'Le nom du service et la direction sont requis' });
     }
-    
-    const [result] = await pool.execute(
-      `INSERT INTO services (id_direction, nom_service, description, email, telephone, responsable)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id_direction, nom_service, description || null, email || null, telephone || null, responsable || null]
-    );
-    
-    const [newService] = await pool.execute(
-      'SELECT s.*, d.nom_direction as direction_nom FROM services s LEFT JOIN directions d ON s.id_direction = d.id_direction WHERE s.id_service = ?',
-      [result.insertId]
-    );
-    
+
+    const insertId = await serviceModel.create({
+      id_direction,
+      nom_service,
+      description: description || null,
+      email: email || null,
+      telephone: telephone || null,
+      responsable: responsable || null
+    });
+
+    const newService = await serviceModel.findById(insertId);
+
     res.status(201).json({ success: true, data: newService[0], message: 'Service créé avec succès' });
   } catch (error) {
     console.error('Create service error:', error);
@@ -250,28 +202,24 @@ const updateService = async (req, res) => {
   try {
     const { id } = req.params;
     const { id_direction, nom_service, description, email, telephone, responsable } = req.body;
-    
-    const [existing] = await pool.execute(
-      'SELECT id_service FROM services WHERE id_service = ?',
-      [id]
-    );
-    
+
+    const existing = await serviceModel.findById(id);
+
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Service non trouvé' });
     }
-    
-    await pool.execute(
-      `UPDATE services 
-       SET id_direction = ?, nom_service = ?, description = ?, email = ?, telephone = ?, responsable = ?
-       WHERE id_service = ?`,
-      [id_direction, nom_service, description || null, email || null, telephone || null, responsable || null, id]
-    );
-    
-    const [updatedService] = await pool.execute(
-      'SELECT s.*, d.nom_direction as direction_nom FROM services s LEFT JOIN directions d ON s.id_direction = d.id_direction WHERE s.id_service = ?',
-      [id]
-    );
-    
+
+    await serviceModel.update(id, {
+      id_direction,
+      nom_service,
+      description: description || null,
+      email: email || null,
+      telephone: telephone || null,
+      responsable: responsable || null
+    });
+
+    const updatedService = await serviceModel.findById(id);
+
     res.json({ success: true, data: updatedService[0], message: 'Service modifié avec succès' });
   } catch (error) {
     console.error('Update service error:', error);
@@ -283,18 +231,15 @@ const updateService = async (req, res) => {
 const deleteService = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const [existing] = await pool.execute(
-      'SELECT id_service, nom_service FROM services WHERE id_service = ?',
-      [id]
-    );
-    
+
+    const existing = await serviceModel.findById(id);
+
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Service non trouvé' });
     }
-    
-    await pool.execute('DELETE FROM services WHERE id_service = ?', [id]);
-    
+
+    await serviceModel.deleteById(id);
+
     res.json({ success: true, message: `Service "${existing[0].nom_service}" supprimé avec succès` });
   } catch (error) {
     console.error('Delete service error:', error);
@@ -308,16 +253,13 @@ const deleteService = async (req, res) => {
 const getDoleancesByDirection = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const [direction] = await pool.execute(
-      'SELECT * FROM directions WHERE id_direction = ?',
-      [id]
-    );
-    
+
+    const direction = await directionModel.findById(id);
+
     if (direction.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction non trouvée' });
     }
-    
+
     const [doleances] = await pool.execute(
       `SELECT d.*, 
        c.nom as citoyen_nom, c.prenom as citoyen_prenom,
@@ -333,7 +275,7 @@ const getDoleancesByDirection = async (req, res) => {
        ORDER BY d.date_creation DESC`,
       [id]
     );
-    
+
     const [stats] = await pool.execute(
       `SELECT 
         COUNT(*) as total,
@@ -346,9 +288,9 @@ const getDoleancesByDirection = async (req, res) => {
        WHERE d.id_direction = ?`,
       [id]
     );
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       data: doleances,
       stats: stats[0] || { total: 0, en_cours: 0, traitees: 0, transferees: 0, rejetees: 0 }
     });
@@ -362,7 +304,7 @@ const getDoleancesByDirection = async (req, res) => {
 const getDoleancesTransferees = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const [doleances] = await pool.execute(
       `SELECT d.*, 
        c.nom as citoyen_nom, c.prenom as citoyen_prenom,
@@ -378,7 +320,7 @@ const getDoleancesTransferees = async (req, res) => {
        ORDER BY d.date_transfert DESC, d.date_creation DESC`,
       [id]
     );
-    
+
     res.json({ success: true, data: doleances });
   } catch (error) {
     console.error('Get doleances transferees error:', error);
@@ -392,28 +334,25 @@ const transfererDoleance = async (req, res) => {
     const { id } = req.params;
     const { id_direction_dest, id_agent, commentaire } = req.body;
     const userId = req.user.id_utilisateur;
-    
-    const [doleance] = await pool.execute(
-      'SELECT * FROM doleances WHERE id_doleance = ?',
-      [id]
-    );
-    
+
+    const doleance = await doleanceModel.findById(id);
+
     if (doleance.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
-    
+
     if (!doleance[0].id_direction_origine && doleance[0].id_direction) {
       await pool.execute(
         'UPDATE doleances SET id_direction_origine = ? WHERE id_doleance = ?',
         [doleance[0].id_direction, id]
       );
     }
-    
+
     const [statutTransfere] = await pool.execute(
       "SELECT id_statut FROM statuts WHERE nom_statut = 'transferee'"
     );
     const id_statut = statutTransfere[0]?.id_statut || 5;
-    
+
     await pool.execute(
       `UPDATE doleances 
        SET id_direction_transfert = ?, 
@@ -425,13 +364,13 @@ const transfererDoleance = async (req, res) => {
        WHERE id_doleance = ?`,
       [id_direction_dest, id_agent || null, id_statut, commentaire || null, id_direction_dest, id]
     );
-    
+
     await pool.execute(
       `INSERT INTO logs_activites (id_utilisateur, action, table_name, id_enregistrement, details, date_action)
        VALUES (?, 'transfert_doleance', 'doleances', ?, ?, NOW())`,
       [userId, id, `Doléance transférée à la direction ID: ${id_direction_dest}`]
     );
-    
+
     const [updatedDoleance] = await pool.execute(
       `SELECT d.*, dir.nom_direction as direction_destinataire
        FROM doleances d
@@ -439,9 +378,9 @@ const transfererDoleance = async (req, res) => {
        WHERE d.id_doleance = ?`,
       [id]
     );
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       data: updatedDoleance[0],
       message: 'Doléance transférée avec succès'
     });
@@ -456,31 +395,17 @@ const transfererDoleance = async (req, res) => {
 const getDirectionDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const [direction] = await pool.execute(
-      'SELECT * FROM directions WHERE id_direction = ?',
-      [id]
-    );
-    
+
+    const direction = await directionModel.findById(id);
+
     if (direction.length === 0) {
       return res.status(404).json({ success: false, message: 'Direction non trouvée' });
     }
-    
-    const [services] = await pool.execute(
-      'SELECT * FROM services WHERE id_direction = ? ORDER BY nom_service',
-      [id]
-    );
-    
-    const [agents] = await pool.execute(
-      `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.telephone, u.actif,
-              COALESCE(r.nom_role, 'agent') as nom_role
-       FROM utilisateurs u
-       LEFT JOIN roles r ON u.id_role = r.id_role
-       WHERE u.id_direction = ? AND u.actif = 1
-       ORDER BY r.nom_role, u.nom, u.prenom`,
-      [id]
-    );
-    
+
+    const services = await serviceModel.findByDirection(id);
+
+    const agents = await utilisateurModel.findByDirection(id);
+
     let doleances = [];
     try {
       const [doleancesData] = await pool.execute(
@@ -501,7 +426,7 @@ const getDirectionDetails = async (req, res) => {
     } catch (err) {
       console.log('Erreur récupération doléances:', err.message);
     }
-    
+
     let doleancesTransferees = [];
     try {
       const [doleancesTransfereesData] = await pool.execute(
@@ -524,7 +449,7 @@ const getDirectionDetails = async (req, res) => {
     } catch (err) {
       console.log('Erreur récupération doléances transférées:', err.message);
     }
-    
+
     let stats = {
       total_doleances: 0,
       doleances_en_cours: 0,
@@ -533,7 +458,7 @@ const getDirectionDetails = async (req, res) => {
       total_services: services.length,
       total_agents: agents.length
     };
-    
+
     try {
       const [statsData] = await pool.execute(
         `SELECT 
@@ -559,9 +484,9 @@ const getDirectionDetails = async (req, res) => {
     } catch (err) {
       console.log('Erreur récupération statistiques:', err.message);
     }
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       data: {
         direction: direction[0],
         services: services || [],
@@ -573,9 +498,9 @@ const getDirectionDetails = async (req, res) => {
     });
   } catch (error) {
     console.error('Get direction details error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur lors du chargement des détails de la direction: ' + error.message 
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors du chargement des détails de la direction: ' + error.message
     });
   }
 };
@@ -584,39 +509,21 @@ const getDirectionDetails = async (req, res) => {
 
 const getDirectionsStats = async (req, res) => {
   try {
-    const [total] = await pool.execute('SELECT COUNT(*) as total FROM directions');
-    
-    const [byCategory] = await pool.execute(
-      'SELECT categorie, COUNT(*) as count FROM directions GROUP BY categorie ORDER BY count DESC'
-    );
-    
-    const [topDirections] = await pool.execute(
-      `SELECT d.nom_direction, COUNT(dl.id_doleance) as total_doleances
-       FROM directions d
-       LEFT JOIN doleances dl ON d.id_direction = dl.id_direction
-       GROUP BY d.id_direction
-       ORDER BY total_doleances DESC
-       LIMIT 5`
-    );
-    
-    const [servicesStats] = await pool.execute(
-      'SELECT COUNT(*) as total_services FROM services'
-    );
-    
-    const [agentsByDirection] = await pool.execute(
-      `SELECT d.nom_direction, COUNT(u.id_utilisateur) as total_agents
-       FROM directions d
-       LEFT JOIN utilisateurs u ON d.id_direction = u.id_direction AND u.actif = 1
-       GROUP BY d.id_direction
-       ORDER BY total_agents DESC
-       LIMIT 5`
-    );
-    
+    const total = await directionModel.countAll();
+
+    const byCategory = await directionModel.countByCategorie();
+
+    const topDirections = await directionModel.countDoleances();
+
+    const totalServices = await serviceModel.countAll();
+
+    const agentsByDirection = await directionModel.countAgents();
+
     res.json({
       success: true,
       data: {
-        total_directions: total[0].total,
-        total_services: servicesStats[0].total_services,
+        total_directions: total,
+        total_services: totalServices,
         by_category: byCategory,
         top_directions: topDirections,
         agents_by_direction: agentsByDirection
@@ -630,14 +537,8 @@ const getDirectionsStats = async (req, res) => {
 
 const getUsersWithoutDirection = async (req, res) => {
   try {
-    const [users] = await pool.execute(
-      `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.telephone, COALESCE(r.nom_role, 'agent') as nom_role
-       FROM utilisateurs u
-       LEFT JOIN roles r ON u.id_role = r.id_role
-       WHERE (u.id_direction IS NULL OR u.id_direction = '') AND u.actif = 1
-       ORDER BY u.nom, u.prenom`
-    );
-    
+    const users = await utilisateurModel.findSansDirection();
+
     res.json({ success: true, data: users });
   } catch (error) {
     console.error('Get users without direction error:', error);
@@ -647,22 +548,8 @@ const getUsersWithoutDirection = async (req, res) => {
 
 const getAllDirectionsWithStats = async (req, res) => {
   try {
-    const [directions] = await pool.execute(
-      `SELECT 
-        d.*,
-        COUNT(DISTINCT s.id_service) as total_services,
-        COUNT(DISTINCT u.id_utilisateur) as total_agents,
-        COUNT(DISTINCT dl.id_doleance) as total_doleances,
-        SUM(CASE WHEN dl.id_statut IN (SELECT id_statut FROM statuts WHERE nom_statut IN ('en_attente', 'en_cours')) THEN 1 ELSE 0 END) as doleances_en_cours,
-        SUM(CASE WHEN dl.id_statut IN (SELECT id_statut FROM statuts WHERE nom_statut = 'traitee') THEN 1 ELSE 0 END) as doleances_traitees
-       FROM directions d
-       LEFT JOIN services s ON d.id_direction = s.id_direction
-       LEFT JOIN utilisateurs u ON d.id_direction = u.id_direction AND u.actif = 1
-       LEFT JOIN doleances dl ON d.id_direction = dl.id_direction
-       GROUP BY d.id_direction
-       ORDER BY d.nom_direction`
-    );
-    
+    const directions = await directionModel.findAllWithStats();
+
     res.json({ success: true, data: directions });
   } catch (error) {
     console.error('Get all directions with stats error:', error);

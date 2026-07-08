@@ -29,7 +29,8 @@ const {
     downloadPieceJointe,
     deletePieceJointe,
     sendReferenceByContact,
-    getSuggestions
+    getSuggestions,
+    getStatsOverview
 } = require('../controllers/doleanceController');
 
 // ========== ROUTES PUBLIQUES (SANS AUTHENTIFICATION) ==========
@@ -162,56 +163,6 @@ router.get('/stats/overview', authorize(
     'administrateur',
     'directeur',
     'chef_service'
-), async (req, res) => {
-    try {
-        const { pool } = require('../config/database');
-        
-        // Statistiques globales
-        const [total] = await pool.execute('SELECT COUNT(*) as total FROM doleances');
-        const [enAttente] = await pool.execute(
-            "SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')"
-        );
-        const [enCours] = await pool.execute(
-            "SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours')"
-        );
-        const [resolues] = await pool.execute(
-            "SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue')"
-        );
-        
-        // Statistiques par catégorie
-        const [parCategorie] = await pool.execute(`
-            SELECT c.nom_categorie, COUNT(d.id_doleance) as total
-            FROM categories_doleance c
-            LEFT JOIN doleances d ON c.id_categorie = d.id_categorie
-            GROUP BY c.id_categorie
-            ORDER BY total DESC
-            LIMIT 5
-        `);
-        
-        // Statistiques par priorité
-        const [parPriorite] = await pool.execute(`
-            SELECT p.nom_priorite, p.niveau, COUNT(d.id_doleance) as total
-            FROM priorites p
-            LEFT JOIN doleances d ON p.id_priorite = d.id_priorite
-            GROUP BY p.id_priorite
-            ORDER BY p.niveau DESC
-        `);
-        
-        res.json({
-            success: true,
-            data: {
-                total: total[0].total || 0,
-                en_attente: enAttente[0].en_attente || 0,
-                en_cours: enCours[0].en_cours || 0,
-                resolues: resolues[0].resolues || 0,
-                par_categorie: parCategorie || [],
-                par_priorite: parPriorite || []
-            }
-        });
-    } catch (error) {
-        console.error('Stats error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
+), getStatsOverview);
 
 module.exports = router;
