@@ -16,12 +16,19 @@ const {
   getPiecesJointes, createPieceJointe, deletePieceJointe,
   getCommentairesInternes, createCommentaireInterne,
   getNotifications, createNotification, markNotificationAsRead,
-  getLogsActivites, createLogActivite
+  getLogsActivites, createLogActivite,
+  getDoleanceByReference
 } = require('../controllers/globalController');
 
 // ==================== ROUTES PUBLIQUES ====================
 router.get('/doleances/public', getDoleances);
 router.get('/doleances/public/:id', getDoleanceById);
+
+
+// router.get("/public/:reference", getDoleanceByReference);
+router.get("/public/:reference", getDoleanceByReference);
+
+
 router.post('/doleances', createDoleance);
 router.get('/categories', getCategories);
 router.get('/priorites', getPriorites);

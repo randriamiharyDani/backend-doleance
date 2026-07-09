@@ -321,22 +321,36 @@ const transfererDoleanceCentral = async (req, res) => {
 const getDoleanceByReference = async (req, res) => {
   try {
     const { reference } = req.params;
+    console.log('🔍 Recherche par référence:', reference);
+    
     const doleances = await doleanceModel.findByReference(reference);
-    if (doleances.length === 0) {
+    console.log('📦 Résultat findByReference:', doleances?.length, 'trouvé(s)');
+    
+    if (!doleances || doleances.length === 0) {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
     const doleance = doleances[0];
-    const [reponses, historique, piecesJointes] = await Promise.all([
-      reponseModel.findByDoleanceId(doleance.id_doleance),
-      historiqueModel.findByDoleanceId(doleance.id_doleance),
-      pieceJointeModel.findByDoleanceId(doleance.id_doleance)
-    ]);
+    console.log('✅ Doléance trouvée ID:', doleance.id_doleance);
+    
+    let reponses = [], historique = [], piecesJointes = [];
+    try {
+      const results = await Promise.all([
+        reponseModel.findByDoleanceId(doleance.id_doleance),
+        historiqueModel.findByDoleanceId(doleance.id_doleance),
+        pieceJointeModel.findByDoleanceId(doleance.id_doleance)
+      ]);
+      reponses = results[0] || [];
+      historique = results[1] || [];
+      piecesJointes = results[2] || [];
+    } catch (subError) {
+      console.error('❌ Erreur Promises:', subError.message);
+    }
 
     const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const piecesWithUrl = piecesJointes.map(piece => ({
+    const piecesWithUrl = (piecesJointes || []).map(piece => ({
       ...piece,
-      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
+      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier || ''}`
     }));
 
     res.json({
@@ -346,6 +360,10 @@ const getDoleanceByReference = async (req, res) => {
         titre: doleance.titre,
         description: doleance.description,
         date_creation: doleance.date_creation,
+        date_derniere_modification: doleance.date_mise_a_jour,
+        lieu_exact: doleance.lieu_exact || null,
+        nom_quartier: doleance.nom_quartier || null,
+        suggestions: doleance.suggestions || null,
         statut: doleance.nom_statut,
         statut_couleur: doleance.statut_couleur,
         priorite: doleance.nom_priorite,
@@ -357,7 +375,7 @@ const getDoleanceByReference = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get doleance by reference error:', error);
+    console.error('❌ Get doleance by reference error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

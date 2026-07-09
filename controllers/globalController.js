@@ -187,6 +187,37 @@ const getDoleanceById = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+//  controlleur reference get
+const getDoleanceByReference = async (req, res) => {
+  try {
+    const { reference } = req.params;
+
+    console.log("Reference reçue :", reference);
+
+    const doleances = await doleanceModel.findByReference(reference);
+
+    console.log(doleances);
+
+    if (!doleances || doleances.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Référence introuvable"
+      });
+    }
+
+    res.json({
+      success: true,
+      data: doleances[0]
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 const createDoleance = async (req, res) => {
   try {
@@ -596,5 +627,5 @@ module.exports = {
   getPiecesJointes, createPieceJointe, deletePieceJointe,
   getCommentairesInternes, createCommentaireInterne,
   getNotifications, createNotification, markNotificationAsRead,
-  getLogsActivites, createLogActivite
+  getLogsActivites, createLogActivite ,getDoleanceByReference
 };

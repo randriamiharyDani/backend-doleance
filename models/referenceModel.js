@@ -55,4 +55,14 @@ const findStatutByNom = async (connection, nom_statut) => {
   return rows;
 };
 
-module.exports = { getCategories, getStatuts, getPriorites, getDirections, getQuartiers, getRoles, findDirectionById, findFirstDirection, findStatutByNom };
+
+const findByReference = async (reference) => {
+    const [rows] = await db.query(
+        "SELECT * FROM doleances WHERE reference = ?",
+        [reference]
+    );
+
+    return rows;
+};
+
+module.exports = { getCategories, getStatuts, getPriorites, getDirections, getQuartiers, getRoles, findDirectionById, findFirstDirection, findStatutByNom ,findByReference };

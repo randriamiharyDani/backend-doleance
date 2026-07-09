@@ -34,11 +34,12 @@ const findById = async (id) => {
 
 const findByReference = async (reference) => {
   const [rows] = await pool.execute(
-    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, q.nom_quartier
      FROM doleances d
-     JOIN statuts s ON d.id_statut = s.id_statut
-     JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
      WHERE d.reference = ?`,
     [reference]
   );
