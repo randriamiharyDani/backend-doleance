@@ -6,7 +6,7 @@ const serviceModel = require('../models/serviceModel');
 const getDashboardStats = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -43,6 +43,46 @@ const getDashboardStats = async (req, res) => {
       `SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4 ${directionFilter}`,
       params
     );
+
+    // Calcul de l'évolution (comparaison mois courant vs mois précédent)
+    const [currentMonthResult] = await pool.execute(
+      `SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
+        SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
+        SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
+      FROM doleances
+      WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,
+      params
+    );
+
+    const [previousMonthResult] = await pool.execute(
+      `SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
+        SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
+        SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
+      FROM doleances
+      WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 2 MONTH)
+        AND date_creation < DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,
+      params
+    );
+
+    const calcChange = (current, previous) => {
+      if (!previous || previous === 0) return { value: null, type: 'up' };
+      const pct = ((current - previous) / previous * 100);
+      return {
+        value: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
+        type: pct >= 0 ? 'up' : 'down'
+      };
+    };
+
+    const evolution = {
+      total: calcChange(currentMonthResult[0].total, previousMonthResult[0].total),
+      enCours: calcChange(currentMonthResult[0].enCours, previousMonthResult[0].enCours),
+      resolues: calcChange(currentMonthResult[0].resolues, previousMonthResult[0].resolues),
+      urgentes: calcChange(currentMonthResult[0].urgentes, previousMonthResult[0].urgentes)
+    };
 
     // Données supplémentaires selon le rôle
     let additionalData = {};
@@ -81,7 +121,7 @@ const getDashboardStats = async (req, res) => {
 
     if (userRole === 'agent') {
       const [doleancesTraitees] = await pool.execute(
-        'SELECT COUNT(*) as total FROM doleances WHERE id_agent = ? AND id_statut IN (5,6)',
+        'SELECT COUNT(*) as total FROM doleances WHERE id_utilisateur_assignee = ? AND id_statut IN (5,6)',
         [userId]
       );
       additionalData.doleancesTraitees = doleancesTraitees[0].total || 0;
@@ -94,6 +134,7 @@ const getDashboardStats = async (req, res) => {
         enCours: enCoursResult[0].enCours || 0,
         resolues: resoluesResult[0].resolues || 0,
         urgentes: urgentesResult[0].urgentes || 0,
+        evolution,
         ...additionalData
       }
     });
@@ -111,7 +152,7 @@ const getStatsByCategorie = async (req, res) => {
   try {
     const { periode = 'month' } = req.query;
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -173,7 +214,7 @@ const getStatsByCategorie = async (req, res) => {
 const getStatsByDirection = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -213,7 +254,7 @@ const getStatsByDirection = async (req, res) => {
 const getStatsByStatut = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -251,7 +292,7 @@ const getStatsByStatut = async (req, res) => {
 const getStatsByPriorite = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -290,7 +331,7 @@ const getEvolutionTemporelle = async (req, res) => {
   try {
     const { periode = 'month', nb = 12 } = req.query;
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -355,7 +396,7 @@ const getCategoriesStats = async (req, res) => {
 const getTempsTraitementMoyen = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -400,7 +441,7 @@ const getPerformanceAgents = async (req, res) => {
   try {
     const { periode = 'month' } = req.query;
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -430,7 +471,7 @@ const getPerformanceAgents = async (req, res) => {
               COUNT(CASE WHEN d.id_statut IN (5,6) THEN 1 END) as doleances_resolues,
               ROUND(AVG(CASE WHEN d.id_statut IN (5,6) THEN TIMESTAMPDIFF(HOUR, d.date_creation, d.date_mise_a_jour) END)) as temps_moyen_heures
        FROM utilisateurs u
-       JOIN doleances d ON u.id_utilisateur = d.id_agent
+        JOIN doleances d ON u.id_utilisateur = d.id_utilisateur_assignee
        WHERE u.id_role IN (2,3) ${dateCondition} ${directionFilter}
        GROUP BY u.id_utilisateur
        HAVING doleances_traitees > 0
@@ -477,7 +518,7 @@ const getStatsByQuartier = async (req, res) => {
 const getTauxSatisfaction = async (req, res) => {
   try {
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
@@ -519,7 +560,7 @@ const exportStats = async (req, res) => {
     const { format = 'json' } = req.params;
     const { date_debut, date_fin } = req.body;
     const userId = req.user.id_utilisateur;
-    const userRole = req.user.nom_role;
+    const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
