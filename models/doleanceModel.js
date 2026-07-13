@@ -144,18 +144,6 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
   `;
   const params = [];
 
-  const adminRoles = ['administrateur_systeme', 'agent_central', 'administrateur'];
-  let directionId = null;
-
-  if (!adminRoles.includes(userRole)) {
-    const [user] = await pool.execute('SELECT id_direction FROM utilisateurs WHERE id_utilisateur = ?', [userId]);
-    directionId = user[0]?.id_direction;
-    if (directionId) {
-      query += ' AND d.id_direction = ?';
-      params.push(directionId);
-    }
-  }
-
   if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
   if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
   if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
@@ -167,10 +155,6 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
 
   let countWhere = '';
   const countParams = [];
-  if (!adminRoles.includes(userRole) && directionId) {
-    countWhere += ' AND d.id_direction = ?';
-    countParams.push(directionId);
-  }
   if (categorie) { countWhere += ' AND d.id_categorie = ?'; countParams.push(Number(categorie)); }
   if (statut) { countWhere += ' AND d.id_statut = ?'; countParams.push(Number(statut)); }
   if (priorite) { countWhere += ' AND d.id_priorite = ?'; countParams.push(Number(priorite)); }

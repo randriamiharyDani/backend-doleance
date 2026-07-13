@@ -8,14 +8,9 @@ const historiqueModel = require('../models/historiqueModel');
 const transfertModel = require('../models/transfertModel');
 
 // ========== UPLOAD DES PIÈCES JOINTES ==========
-const uploadPiecesJointes = async (req, res) => {
-  pieceJointeModel.upload(req, res, async (err) => {
-    if (err) {
-      console.error('Upload error:', err);
-      return res.status(400).json({ success: false, message: err.message || 'Erreur lors de l\'upload' });
-    }
-
+const handleUploadPiecesJointes = async (req, res) => {
     const { doleance_id } = req.body;
+    console.log('Upload called - doleance_id:', doleance_id, 'files:', req.files?.length);
     if (!doleance_id) {
       return res.status(400).json({ success: false, message: 'ID de la doléance requis' });
     }
@@ -53,6 +48,7 @@ const uploadPiecesJointes = async (req, res) => {
       }
 
       await connection.commit();
+      console.log('Upload success:', uploadedFiles.length, 'files for doleance', doleance_id);
       res.json({
         success: true,
         message: `${uploadedFiles.length} fichier(s) uploadé(s) avec succès`,
@@ -60,12 +56,11 @@ const uploadPiecesJointes = async (req, res) => {
       });
     } catch (error) {
       await connection.rollback();
-      console.error('Upload pieces jointes error:', error);
-      res.status(500).json({ success: false, message: 'Erreur lors de l\'enregistrement des fichiers' });
+      console.error('Upload pieces jointes error:', error.message, error.code, error.sql);
+      res.status(500).json({ success: false, message: 'Erreur lors de l\'enregistrement des fichiers', detail: error.message });
     } finally {
       connection.release();
     }
-  });
 };
 
 // ========== RÉCUPÉRER LES PIÈCES JOINTES ==========
@@ -89,7 +84,7 @@ const downloadPieceJointe = async (req, res) => {
     if (pieces.length === 0) {
       return res.status(404).json({ success: false, message: 'Fichier non trouvé' });
     }
-    res.download(pieces[0].chemin, pieces[0].nom_fichier);
+    res.download(pieces[0].chemin_fichier, pieces[0].nom_fichier);
   } catch (error) {
     console.error('Download piece jointe error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -103,6 +98,23 @@ const deletePieceJointe = async (req, res) => {
     res.json({ success: true, message: 'Fichier supprimé avec succès' });
   } catch (error) {
     console.error('Delete piece jointe error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ========== PIÈCES JOINTES PUBLIQUES PAR RÉFÉRENCE ==========
+const getPiecesJointesByReference = async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const doleances = await doleanceModel.findByReference(reference);
+    if (!doleances || doleances.length === 0) {
+      return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
+    }
+    const pieces = await pieceJointeModel.findByDoleanceId(doleances[0].id_doleance);
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(pieces, req);
+    res.json({ success: true, data: piecesWithUrl });
+  } catch (error) {
+    console.error('Get pieces jointes by reference error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -554,7 +566,7 @@ const createDoleance = async (req, res) => {
       res.status(201).json({
         success: true,
         message: 'Doléance créée avec succès',
-        data: { id: id_doleance, reference, identifiant_citoyen: finalCitizenId }
+        data: { id: id_doleance, id_doleance, reference, identifiant_citoyen: finalCitizenId }
       });
     } catch (error) {
       await connection.rollback();
@@ -817,11 +829,12 @@ module.exports = {
   getDirections,
   getQuartiers,
   getRoles,
-  uploadPiecesJointes,
+  handleUploadPiecesJointes,
   getPiecesJointes,
   downloadPieceJointe,
   deletePieceJointe,
   sendReferenceByContact,
+  getPiecesJointesByReference,
   getSuggestions,
   getStatsOverview
 };

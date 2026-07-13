@@ -24,15 +24,17 @@ const {
     getDirections,
     getQuartiers,
     getRoles,
-    uploadPiecesJointes,
+    handleUploadPiecesJointes,
     getPiecesJointes,
     downloadPieceJointe,
     deletePieceJointe,
     sendReferenceByContact,
+    getPiecesJointesByReference,
     getSuggestions,
     getStatsOverview,
     getDoleancesAssignedLocations
 } = require('../controllers/doleanceController');
+const { upload } = require('../models/pieceJointeModel');
 
 // ========== ROUTES PUBLIQUES (SANS AUTHENTIFICATION) ==========
 // Routes accessibles à tous
@@ -40,6 +42,7 @@ router.get('/public', getDoleancesPublic);
 router.post('/public', createDoleance);
 router.get('/public/assigned-locations', getDoleancesAssignedLocations);
 router.get('/public/suggestions', getSuggestions);
+router.get('/public/:reference/pieces-jointes', getPiecesJointesByReference);
 router.get('/public/:reference', getDoleanceByReference);
 router.get('/public/citoyen/:identifiant/doleances', getDoleancesByCitizenId);
 router.get('/public/citoyen/:identifiant/doleance/:reference', getDoleanceByReferenceAndCitizenId);
@@ -54,6 +57,7 @@ router.get('/roles', getRoles);
 
 // Routes publiques pour les citoyens
 router.post('/', createDoleance);
+router.post('/public/upload', upload, handleUploadPiecesJointes);
 router.post('/:id/satisfaction', addSatisfaction);
 router.post('/send-reference', sendReferenceByContact);
 router.get('/citoyen/:identifiant/doleances', getDoleancesByCitizenId);
@@ -133,7 +137,7 @@ router.post('/upload', authorize(
     'directeur',
     'chef_service',
     'agent'
-), uploadPiecesJointes);
+), upload, handleUploadPiecesJointes);
 
 // Récupérer les pièces jointes d'une doléance
 router.get('/:id/pieces-jointes', authorize(
