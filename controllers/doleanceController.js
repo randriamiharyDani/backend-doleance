@@ -487,8 +487,9 @@ const createDoleance = async (req, res) => {
   try {
     const { 
       identifiant_citoyen,
-      nom_citoyen, prenom_citoyen, telephone_citoyen, adresse_citoyen,
-      titre, description, id_categorie, id_quartier
+      nom_citoyen, prenom_citoyen, telephone_citoyen, email_citoyen, adresse_citoyen,
+      titre, description, id_categorie, id_quartier,
+      latitude, longitude, lieu_exact, suggestions
     } = req.body;
 
     if (!nom_citoyen || !prenom_citoyen || !titre || !description || !id_categorie) {
@@ -516,6 +517,7 @@ const createDoleance = async (req, res) => {
           nom: nom_citoyen,
           prenom: prenom_citoyen,
           telephone: telephone_citoyen,
+          email: email_citoyen,
           adresse: adresse_citoyen,
           identifiant_citoyen: finalCitizenId
         });
@@ -535,7 +537,9 @@ const createDoleance = async (req, res) => {
 
       const id_doleance = await doleanceModel.create(connection, {
         reference, titre, description, id_citoyen, id_categorie,
-        id_quartier: quartierValue, id_direction: defaultDirection, id_statut: defaultStatut
+        id_quartier: quartierValue, id_direction: defaultDirection, id_statut: defaultStatut,
+        latitude: latitude || null, longitude: longitude || null, lieu_exact: lieu_exact || null,
+        suggestions: suggestions || null
       });
 
       await historiqueModel.create(connection, {
@@ -778,11 +782,23 @@ const getRoles = async (req, res) => {
   }
 };
 
+// ========== RÉCUPÉRER LES DOLÉANCES ASSIGNÉES AVEC LOCALISATION ==========
+const getDoleancesAssignedLocations = async (req, res) => {
+  try {
+    const doleances = await doleanceModel.listAssignedLocations();
+    res.json({ success: true, data: doleances });
+  } catch (error) {
+    console.error('Get assigned locations error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ========== EXPORTS ==========
 module.exports = {
   createDoleance,
   getDoleances,
   getDoleancesBackoffice,
+  getDoleancesAssignedLocations,
   getDoleancesPublic,
   getDoleancesEnAttenteTransfert,
   transfererDoleanceCentral,

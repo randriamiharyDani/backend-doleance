@@ -14,11 +14,11 @@ const findByIdentifiant = async (identifiant) => {
   return rows;
 };
 
-const create = async ({ nom, prenom, telephone, adresse, identifiant_citoyen }) => {
+const create = async ({ nom, prenom, telephone, email, adresse, identifiant_citoyen }) => {
   const [result] = await pool.execute(
-    `INSERT INTO citoyens (nom, prenom, telephone, adresse, identifiant_citoyen) 
-     VALUES (?, ?, ?, ?, ?)`,
-    [nom, prenom, telephone || null, adresse || null, identifiant_citoyen]
+    `INSERT INTO citoyens (nom, prenom, telephone, email, adresse, identifiant_citoyen) 
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [nom, prenom, telephone || null, email || null, adresse || null, identifiant_citoyen]
   );
   return result.insertId;
 };

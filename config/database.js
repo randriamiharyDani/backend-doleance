@@ -342,12 +342,15 @@ const runMigrations = async () => {
   const migrations = [
     `ALTER TABLE citoyens ADD COLUMN IF NOT EXISTS identifiant_citoyen VARCHAR(50) NULL AFTER id_citoyen`,
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_satisfaction TIMESTAMP NULL AFTER satisfaction_commentaire`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS lieu_exact TEXT AFTER longitude`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS suggestions TEXT AFTER lieu_exact`,
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS actif BOOLEAN DEFAULT TRUE AFTER description`
   ];
 
   for (const sql of migrations) {
     try {
       // On tente sans IF NOT EXISTS pour MySQL/MariaDB qui ne le supporte pas toujours
+      // Note: erreur 1060 = duplicate column, ignorée
       await promisePool.execute(sql.replace('ADD COLUMN IF NOT EXISTS', 'ADD COLUMN'));
     } catch (err) {
       // Ignorer si la colonne existe déjà (duplicate column)

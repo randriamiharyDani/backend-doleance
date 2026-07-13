@@ -124,7 +124,7 @@ const listPublic = async ({ categorie, statut, search, page = 1, limit = 10, sor
   query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
   params.push(Number(limit), offset);
 
-  const [rows] = await pool.execute(query, params);
+  const [rows] = await pool.query(query, params);
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
@@ -190,7 +190,7 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
   query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
   params.push(Number(limit), offset);
 
-  const [rows] = await pool.execute(query, params);
+  const [rows] = await pool.query(query, params);
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
@@ -236,7 +236,7 @@ const list = async ({ page = 1, limit = 10, categorie, statut, priorite, search 
   query += ' ORDER BY d.date_creation DESC LIMIT ? OFFSET ?';
   params.push(Number(limit), offset);
 
-  const [rows] = await pool.execute(query, params);
+  const [rows] = await pool.query(query, params);
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
@@ -273,19 +273,19 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
   query += ' ORDER BY d.date_creation ASC LIMIT ? OFFSET ?';
   params.push(Number(limit), offset);
 
-  const [rows] = await pool.execute(query, params);
+  const [rows] = await pool.query(query, params);
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
-const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut }) => {
+const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions }) => {
   const defaultPriorite = 2;
   const [result] = await connection.execute(
     `INSERT INTO doleances 
      (reference, titre, description, id_citoyen, id_categorie, id_priorite, 
-      id_quartier, id_direction, id_statut)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [reference, titre, description, id_citoyen, Number(id_categorie), defaultPriorite,
-     id_quartier, id_direction, id_statut]
+     id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions]
   );
   return result.insertId;
 };
@@ -344,10 +344,27 @@ const getDefaultDirection = async (id_categorie) => {
   return directionParCategorie[Number(id_categorie)] || 1;
 };
 
+const listAssignedLocations = async () => {
+  const [rows] = await pool.execute(
+    `SELECT d.id_doleance, d.reference, d.titre, d.latitude, d.longitude, d.lieu_exact,
+            d.date_creation, s.nom_statut, c.nom_categorie,
+            u.nom as assignee_nom, u.prenom as assignee_prenom
+     FROM doleances d
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN utilisateurs u ON d.id_utilisateur_assignee = u.id_utilisateur
+     WHERE d.latitude IS NOT NULL 
+       AND d.longitude IS NOT NULL
+       AND d.id_utilisateur_assignee IS NOT NULL`
+  );
+  return rows;
+};
+
 module.exports = {
   generateReference, findById, findByReference, findByReferenceAndCitoyen,
   findByCitoyenId, listPublic, listBackoffice, list, listEnAttenteTransfert,
   create, updateStatut, getCurrentStatut, updatePriorite,
   updateDirectionAndStatut, addSatisfaction, deleteById,
-  searchSuggestions, getDefaultDirection
+  searchSuggestions, getDefaultDirection,
+  listAssignedLocations
 };

@@ -30,15 +30,17 @@ const {
     deletePieceJointe,
     sendReferenceByContact,
     getSuggestions,
-    getStatsOverview
+    getStatsOverview,
+    getDoleancesAssignedLocations
 } = require('../controllers/doleanceController');
 
 // ========== ROUTES PUBLIQUES (SANS AUTHENTIFICATION) ==========
 // Routes accessibles à tous
 router.get('/public', getDoleancesPublic);
 router.post('/public', createDoleance);
-router.get('/public/:reference', getDoleanceByReference);
+router.get('/public/assigned-locations', getDoleancesAssignedLocations);
 router.get('/public/suggestions', getSuggestions);
+router.get('/public/:reference', getDoleanceByReference);
 router.get('/public/citoyen/:identifiant/doleances', getDoleancesByCitizenId);
 router.get('/public/citoyen/:identifiant/doleance/:reference', getDoleanceByReferenceAndCitizenId);
 
