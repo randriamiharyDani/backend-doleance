@@ -1,7 +1,7 @@
 const { pool } = require('../config/database');
 
 const findByEmail = async (email) => {
-  const [rows] = await pool.execute('SELECT id_utilisateur FROM utilisateurs WHERE email = ?', [email]);
+  const [rows] = await pool.execute('SELECT id_utilisateur, nom, prenom, email FROM utilisateurs WHERE email = ?', [email]);
   return rows;
 };
 
@@ -163,6 +163,56 @@ const findAgentsDisponibles = async (id_direction) => {
   return rows;
 };
 
+// === Password Reset Tokens ===
+
+const createResetToken = async (id_utilisateur, token) => {
+  await pool.execute(
+    'INSERT INTO password_reset_tokens (id_utilisateur, token, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE))',
+    [id_utilisateur, token]
+  );
+};
+
+const findValidResetToken = async (token) => {
+  const [rows] = await pool.execute(
+    `SELECT prt.id, prt.id_utilisateur, prt.token, prt.expires_at, prt.used,
+            u.nom, u.prenom, u.email
+     FROM password_reset_tokens prt
+     JOIN utilisateurs u ON prt.id_utilisateur = u.id_utilisateur
+     WHERE prt.token = ? AND prt.used = FALSE AND prt.expires_at > NOW()
+     LIMIT 1`,
+    [token]
+  );
+  return rows;
+};
+
+const markTokenAsUsed = async (token) => {
+  await pool.execute(
+    'UPDATE password_reset_tokens SET used = TRUE WHERE token = ?',
+    [token]
+  );
+};
+
+const deleteExpiredTokens = async () => {
+  await pool.execute(
+    'DELETE FROM password_reset_tokens WHERE expires_at < NOW() OR used = TRUE'
+  );
+};
+
+const debugResetToken = async (tokenHash) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, id_utilisateur, LEFT(token, 16) as token_start, expires_at, used, date_creation
+       FROM password_reset_tokens
+       WHERE token = ?
+       LIMIT 1`,
+      [tokenHash]
+    );
+    return rows.length > 0 ? rows[0] : 'Aucun token trouvé avec ce hash';
+  } catch (err) {
+    return 'Erreur debug: ' + err.message;
+  }
+};
+
 const getPasswordColumn = async () => {
   try {
     const [rows] = await pool.execute(
@@ -180,5 +230,6 @@ module.exports = {
   findAll, create, update, updatePassword, getPassword,
   updateLastConnection, toggleActif, deleteById,
   countAll, countActifs, countByRole,
-  findByDirection, findSansDirection, findAgentsDisponibles
+  findByDirection, findSansDirection, findAgentsDisponibles,
+  createResetToken, findValidResetToken, markTokenAsUsed, deleteExpiredTokens, debugResetToken
 };

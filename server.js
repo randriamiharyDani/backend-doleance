@@ -406,6 +406,16 @@ const startServer = async () => {
     await initDatabase();
     console.log('✅ Base de données initialisée');
 
+    // Vérifier la connexion SMTP au démarrage
+    const { verifyConnection, isSmtpConfigured } = require('./services/emailService');
+    if (isSmtpConfigured()) {
+      await verifyConnection();
+    } else {
+      console.log('⚠️ SMTP non configuré — Les e-mails ne seront pas envoyés.');
+      console.log('⚠️ En mode dev, le lien de réinitialisation sera retourné dans la réponse API.');
+      console.log('⚠️ Pour configurer : renseignez SMTP_USER et SMTP_PASS dans .env');
+    }
+
     server.listen(PORT, () => {
       console.log(`
 =================================================

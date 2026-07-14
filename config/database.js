@@ -347,6 +347,31 @@ const runMigrations = async () => {
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS actif BOOLEAN DEFAULT TRUE AFTER description`
   ];
 
+  // Création de la table password_reset_tokens
+  try {
+    await promisePool.execute(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        id_utilisateur INT NOT NULL,
+        token VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (id_utilisateur) REFERENCES utilisateurs(id_utilisateur) ON DELETE CASCADE
+      )
+    `);
+    // Index (IGNORE si existe déjà)
+    try {
+      await promisePool.execute('CREATE INDEX idx_reset_token ON password_reset_tokens(token)');
+    } catch (_) {}
+    try {
+      await promisePool.execute('CREATE INDEX idx_reset_user ON password_reset_tokens(id_utilisateur)');
+    } catch (_) {}
+    console.log('✅ Table password_reset_tokens vérifiée');
+  } catch (err) {
+    console.error('Erreur création table password_reset_tokens:', err.message);
+  }
+
   for (const sql of migrations) {
     try {
       // On tente sans IF NOT EXISTS pour MySQL/MariaDB qui ne le supporte pas toujours

@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const utilisateurModel = require('../models/utilisateurModel');
 const logModel = require('../models/logModel');
+const { sendResetPasswordEmail, isSmtpConfigured } = require('../services/emailService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_default';
 
@@ -155,22 +157,59 @@ const forgotPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email requis' });
     }
 
-    const users = await utilisateurModel.findByIdBasic(email);
-    // Ne pas révéler si l'email existe
+    const users = await utilisateurModel.findByEmail(email);
+    const genericMessage = 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation.';
+
     if (users.length === 0) {
-      return res.json({ success: true, message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation' });
+      return res.json({ success: true, message: genericMessage });
     }
 
-    const resetToken = jwt.sign({ id: users[0].id_utilisateur }, JWT_SECRET, { expiresIn: '1h' });
+    const user = users[0];
 
+    // Supprimer les anciens tokens non utilisés
+    await utilisateurModel.deleteExpiredTokens();
+
+    // Générer un token sécurisé avec crypto
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Sauvegarder le hash du token en base (expires_at calculé par MySQL: NOW() + 30min)
+    await utilisateurModel.createResetToken(user.id_utilisateur, tokenHash);
+
+    console.log('[FORGOT] Token créé pour:', user.email);
+
+    // Construire le lien de réinitialisation
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
+
+    // Envoyer l'e-mail si SMTP configuré
+    let emailSent = false;
+    if (isSmtpConfigured()) {
+      try {
+        await sendResetPasswordEmail(user.email, user.prenom, resetUrl);
+        emailSent = true;
+        console.log('[FORGOT] E-mail envoyé à:', user.email);
+      } catch (emailError) {
+        console.error('[FORGOT] Echec envoi e-mail:', emailError.message);
+      }
+    }
+
+    // En dev, TOUJOURS renvoyer le lien pour pouvoir tester
     if (process.env.NODE_ENV === 'development') {
-      return res.json({ success: true, message: 'Email de réinitialisation envoyé (mode développement)', resetToken });
+      return res.json({
+        success: true,
+        message: emailSent
+          ? genericMessage
+          : genericMessage + ' (E-mail non envoyé — lien ci-dessous en mode dev)',
+        _dev_resetUrl: resetUrl,
+        _dev_emailSent: emailSent,
+      });
     }
 
-    res.json({ success: true, message: 'Si un compte existe avec cet email, vous recevrez un lien de réinitialisation' });
+    res.json({ success: true, message: genericMessage });
   } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({ success: false, message: 'Erreur lors de l\'envoi de l\'email: ' + error.message });
+    console.error('[FORGOT] Erreur:', error);
+    res.status(500).json({ success: false, message: 'Une erreur est survenue. Veuillez réessayer.' });
   }
 };
 
@@ -181,14 +220,52 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Token et nouveau mot de passe requis' });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await utilisateurModel.updatePassword(decoded.id, hashedPassword);
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 6 caractères' });
+    }
 
-    res.json({ success: true, message: 'Mot de passe réinitialisé avec succès' });
+    // Hasher le token reçu pour le comparer au hash en base
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    console.log('[RESET] Token reçu (longueur):', token.length);
+    console.log('[RESET] Token hash:', tokenHash.substring(0, 16) + '...');
+
+    // Rechercher un token valide en base
+    const tokenData = await utilisateurModel.findValidResetToken(tokenHash);
+
+    console.log('[RESET] Tokens trouvés en base:', tokenData.length);
+
+    if (tokenData.length === 0) {
+      // Vérifier si le token existe mais est expiré ou utilisé
+      const debugInfo = await utilisateurModel.debugResetToken(tokenHash);
+      console.log('[RESET] Debug:', debugInfo);
+      return res.status(400).json({ success: false, message: 'Token invalide ou expiré. Veuillez demander un nouveau lien.' });
+    }
+
+    const record = tokenData[0];
+
+    // Hasher le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Mettre à jour le mot de passe
+    await utilisateurModel.updatePassword(record.id_utilisateur, hashedPassword);
+
+    // Marquer le token comme utilisé (usage unique) — avec le hash, pas le brut
+    await utilisateurModel.markTokenAsUsed(tokenHash);
+
+    // Logger l'action
+    await logModel.create({
+      id_utilisateur: record.id_utilisateur,
+      action: 'Réinitialisation mot de passe',
+      adresse_ip: req.ip || req.socket.remoteAddress || null,
+      user_agent: req.headers['user-agent'] || null,
+    });
+
+    console.log('[RESET] Mot de passe réinitialisé pour utilisateur:', record.id_utilisateur);
+    res.json({ success: true, message: 'Mot de passe réinitialisé avec succès. Vous pouvez maintenant vous connecter.' });
   } catch (error) {
     console.error('Reset password error:', error);
-    res.status(400).json({ success: false, message: 'Token invalide ou expiré' });
+    res.status(500).json({ success: false, message: 'Une erreur est survenue. Veuillez réessayer.' });
   }
 };
 
