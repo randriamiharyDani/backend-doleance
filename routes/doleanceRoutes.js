@@ -18,11 +18,13 @@ const {
     addSatisfaction,
     deleteDoleance,
     updatePriorite,
+    updateDoleance,
     getCategories,
     getStatuts,
     getPriorites,
     getDirections,
     getQuartiers,
+    getQuartiersGeoJSON,
     getRoles,
     handleUploadPiecesJointes,
     getPiecesJointes,
@@ -53,6 +55,7 @@ router.get('/statuts', getStatuts);
 router.get('/priorites', getPriorites);
 router.get('/directions', getDirections);
 router.get('/quartiers', getQuartiers);
+router.get('/quartiers/geojson', getQuartiersGeoJSON);
 router.get('/roles', getRoles);
 
 // Routes publiques pour les citoyens
@@ -97,6 +100,13 @@ router.get('/:id', authorize(
     'directeur', 
     'agent'
 ), getDoleanceById);
+
+// Modifier une doléance (titre, description, catégorie, etc.)
+router.put('/:id', authorize(
+    'administrateur_systeme',
+    'agent_central',
+    'administrateur'
+), updateDoleance);
 
 // Mettre à jour le statut
 router.put('/:id/statut', authorize(

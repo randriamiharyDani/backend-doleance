@@ -290,6 +290,37 @@ const updatePriorite = async (id_doleance, id_priorite) => {
   await pool.execute('UPDATE doleances SET id_priorite = ? WHERE id_doleance = ?', [id_priorite, id_doleance]);
 };
 
+const updateDoleance = async (id_doleance, fields) => {
+  const allowed = ['titre', 'description', 'id_categorie', 'id_quartier', 'lieu_exact', 'suggestions'];
+  const setClauses = [];
+  const values = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      setClauses.push(`${key} = ?`);
+      values.push(fields[key] || null);
+    }
+  }
+  if (setClauses.length === 0) return;
+  setClauses.push('date_mise_a_jour = NOW()');
+  values.push(id_doleance);
+  await pool.execute(`UPDATE doleances SET ${setClauses.join(', ')} WHERE id_doleance = ?`, values);
+};
+
+const updateCitoyen = async (id_citoyen, fields) => {
+  const allowed = ['nom', 'prenom', 'email', 'telephone', 'adresse'];
+  const setClauses = [];
+  const values = [];
+  for (const key of allowed) {
+    if (fields[key] !== undefined) {
+      setClauses.push(`${key} = ?`);
+      values.push(fields[key] || null);
+    }
+  }
+  if (setClauses.length === 0) return;
+  values.push(id_citoyen);
+  await pool.execute(`UPDATE citoyens SET ${setClauses.join(', ')} WHERE id_citoyen = ?`, values);
+};
+
 const updateDirectionAndStatut = async (connection, id_doleance, id_direction, id_statut) => {
   await connection.execute(
     `UPDATE doleances 
@@ -347,7 +378,7 @@ const listAssignedLocations = async () => {
 module.exports = {
   generateReference, findById, findByReference, findByReferenceAndCitoyen,
   findByCitoyenId, listPublic, listBackoffice, list, listEnAttenteTransfert,
-  create, updateStatut, getCurrentStatut, updatePriorite,
+  create, updateStatut, getCurrentStatut, updatePriorite, updateDoleance, updateCitoyen,
   updateDirectionAndStatut, addSatisfaction, deleteById,
   searchSuggestions, getDefaultDirection,
   listAssignedLocations

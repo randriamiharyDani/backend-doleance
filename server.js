@@ -31,6 +31,9 @@ const io = new Server(server, {
 // Stockage des doléances en cours d'édition
 const editingDoleances = {};
 
+// Stockage des utilisateurs connectés
+const onlineUsers = new Map(); // userId -> { socketId, userName, userRole, connectedAt }
+
 // ================================
 // Security middleware
 // ================================
@@ -105,7 +108,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV,
-    editingCount: Object.keys(editingDoleances).length
+    editingCount: Object.keys(editingDoleances).length,
+    onlineUsersCount: onlineUsers.size
   });
 });
 
@@ -134,6 +138,23 @@ app.use('/api/directions', directionRoutes);
 app.use('/api/services', serviceRoutes);
 
 // ================================
+// SOCKET.IO - Fonction broadcast
+// ================================
+
+function broadcastOnlineUsers() {
+  const users = [];
+  onlineUsers.forEach((value, key) => {
+    users.push({
+      userId: key,
+      userName: value.userName,
+      userRole: value.userRole,
+      connectedAt: value.connectedAt
+    });
+  });
+  io.emit('online-users-updated', users);
+}
+
+// ================================
 // SOCKET.IO - Version complète avec verrouillage
 // ================================
 
@@ -151,6 +172,39 @@ io.on('connection', (socket) => {
       console.log(`✅ Utilisateur ${socket.userId} authentifié`);
     } catch (error) {
       console.error('❌ Erreur authentification WebSocket :', error.message);
+    }
+  });
+
+  // ========== GESTION DES UTILISATEURS EN LIGNE ==========
+  socket.on('user-connected', (data) => {
+    const { userId, userName, userRole } = data;
+    if (!userId) return;
+
+    const numericUserId = Number(userId);
+
+    onlineUsers.set(numericUserId, {
+      socketId: socket.id,
+      userName,
+      userRole,
+      connectedAt: new Date()
+    });
+
+    socket.userId = numericUserId;
+    socket.userName = userName;
+    socket.join(`user_${numericUserId}`);
+
+    console.log(`👤 Utilisateur connecté : ${userName} (${numericUserId})`);
+
+    // Diffuser la liste mise à jour à tous les clients
+    broadcastOnlineUsers();
+  });
+
+  socket.on('user-disconnected', (userId) => {
+    const numericUserId = Number(userId);
+    if (numericUserId && onlineUsers.has(numericUserId)) {
+      onlineUsers.delete(numericUserId);
+      console.log(`👤 Utilisateur déconnecté : ${numericUserId}`);
+      broadcastOnlineUsers();
     }
   });
 
@@ -341,6 +395,13 @@ io.on('connection', (socket) => {
   // ========== DECONNEXION ==========
 
   socket.on('disconnect', () => {
+    // Retirer l'utilisateur de la liste des connectés
+    if (socket.userId && onlineUsers.has(socket.userId)) {
+      onlineUsers.delete(socket.userId);
+      console.log(`👤 Utilisateur retiré de la liste en ligne : ${socket.userId}`);
+      broadcastOnlineUsers();
+    }
+
     // Libérer tous les verrous de ce socket
     const keysToDelete = [];
     Object.keys(editingDoleances).forEach((key) => {

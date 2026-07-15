@@ -29,6 +29,44 @@ const getQuartiers = async () => {
   return rows;
 };
 
+const getQuartiersGeoJSON = async () => {
+  const [rows] = await pool.execute(`
+    SELECT q.id_quartier, q.nom_quartier, q.code_postal,
+           q.latitude_centre, q.longitude_centre, q.boundary,
+           a.nom_arrondissement
+    FROM quartiers q
+    LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
+    WHERE q.boundary IS NOT NULL
+  `);
+
+  const features = rows.map(row => {
+    let coordinates = [];
+    try {
+      coordinates = typeof row.boundary === 'string' ? JSON.parse(row.boundary) : row.boundary;
+    } catch (e) {
+      coordinates = [];
+    }
+    return {
+      type: 'Feature',
+      properties: {
+        id_quartier: row.id_quartier,
+        nom_quartier: row.nom_quartier,
+        nom_arrondissement: row.nom_arrondissement,
+        code_postal: row.code_postal
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [coordinates.map(c => [c[1], c[0]])]
+      }
+    };
+  });
+
+  return {
+    type: 'FeatureCollection',
+    features
+  };
+};
+
 const getRoles = async () => {
   const [rows] = await pool.execute('SELECT * FROM roles');
   return rows;
@@ -65,4 +103,4 @@ const findByReference = async (reference) => {
     return rows;
 };
 
-module.exports = { getCategories, getStatuts, getPriorites, getDirections, getQuartiers, getRoles, findDirectionById, findFirstDirection, findStatutByNom ,findByReference };
+module.exports = { getCategories, getStatuts, getPriorites, getDirections, getQuartiers, getQuartiersGeoJSON, getRoles, findDirectionById, findFirstDirection, findStatutByNom ,findByReference };

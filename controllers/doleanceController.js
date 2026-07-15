@@ -753,6 +753,43 @@ const updatePriorite = async (req, res) => {
   }
 };
 
+// ========== METTRE À JOUR UNE DOLÉANCE ==========
+const updateDoleance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { titre, description, id_categorie, id_quartier, lieu_exact, suggestions, citoyen } = req.body;
+
+    const existing = await doleanceModel.findById(id);
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
+    }
+
+    const doleanceFields = {};
+    if (titre !== undefined) doleanceFields.titre = titre;
+    if (description !== undefined) doleanceFields.description = description;
+    if (id_categorie !== undefined) doleanceFields.id_categorie = Number(id_categorie);
+    if (id_quartier !== undefined) doleanceFields.id_quartier = id_quartier || null;
+    if (lieu_exact !== undefined) doleanceFields.lieu_exact = lieu_exact;
+    if (suggestions !== undefined) doleanceFields.suggestions = suggestions;
+
+    if (Object.keys(doleanceFields).length > 0) {
+      await doleanceModel.updateDoleance(id, doleanceFields);
+    }
+
+    if (citoyen && existing[0].id_citoyen) {
+      await doleanceModel.updateCitoyen(existing[0].id_citoyen, citoyen);
+    }
+
+    await historiqueModel.createSimple(id, 'Doléance modifiée par l\'administrateur');
+
+    const updated = await doleanceModel.findById(id);
+    res.json({ success: true, message: 'Doléance mise à jour avec succès', data: updated[0] });
+  } catch (error) {
+    console.error('Update doleance error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ========== STATISTIQUES ==========
 const getStatsOverview = async (req, res) => {
   try {
@@ -847,6 +884,16 @@ const getQuartiers = async (req, res) => {
   }
 };
 
+const getQuartiersGeoJSON = async (req, res) => {
+  try {
+    const data = await referenceModel.getQuartiersGeoJSON();
+    res.json(data);
+  } catch (error) {
+    console.error('Get quartiers geojson error:', error);
+    res.status(500).json({ type: 'FeatureCollection', features: [] });
+  }
+};
+
 const getRoles = async (req, res) => {
   try {
     const data = await referenceModel.getRoles();
@@ -885,11 +932,13 @@ module.exports = {
   addSatisfaction,
   deleteDoleance,
   updatePriorite,
+  updateDoleance,
   getCategories,
   getStatuts,
   getPriorites,
   getDirections,
   getQuartiers,
+  getQuartiersGeoJSON,
   getRoles,
   handleUploadPiecesJointes,
   getPiecesJointes,

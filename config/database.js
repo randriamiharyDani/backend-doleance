@@ -372,7 +372,10 @@ const runMigrations = async () => {
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS email VARCHAR(150) NULL AFTER actif`,
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS telephone VARCHAR(30) NULL AFTER email`,
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS categorie VARCHAR(100) NULL AFTER telephone`,
-    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS responsable VARCHAR(200) NULL AFTER categorie`
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS responsable VARCHAR(200) NULL AFTER categorie`,
+    `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS latitude_centre DOUBLE NULL AFTER code_postal`,
+    `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS longitude_centre DOUBLE NULL AFTER latitude_centre`,
+    `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS boundary JSON NULL AFTER longitude_centre`
   ];
 
   // Création de la table password_reset_tokens
@@ -422,6 +425,43 @@ const runMigrations = async () => {
     console.log('✅ Statut transferee vérifié');
   } catch (err) {
     console.warn('⚠️ Statut transferee:', err.message);
+  }
+
+  // Seed des quartiers d'Antananarivo avec limites
+  try {
+    const [existing] = await promisePool.execute('SELECT COUNT(*) as cnt FROM quartiers');
+    if (existing[0].cnt <= 10) {
+      await promisePool.execute('DELETE FROM quartiers');
+      await promisePool.execute('DELETE FROM arrondissements');
+      await promisePool.execute(`
+        INSERT IGNORE INTO arrondissements (id_arrondissement, nom_arrondissement, code) VALUES
+        (1, 'Iarivo (Analakely)', 'TNR-01'),
+        (2, 'Andohatapaka', 'TNR-02'),
+        (3, 'Isotry', 'TNR-03'),
+        (4, 'Ambohidratrimo', 'TNR-04'),
+        (5, 'Ankorondrano', 'TNR-05'),
+        (6, 'Ambohijanaka', 'TNR-06')
+      `);
+      await promisePool.execute(`
+        INSERT INTO quartiers (id_arrondissement, nom_quartier, code_postal, latitude_centre, longitude_centre, boundary) VALUES
+        (1, 'Analakely', '101', -18.9127, 47.5264, '[[-18.905,47.518],[-18.905,47.535],[-18.920,47.535],[-18.920,47.518],[-18.905,47.518]]'),
+        (1, 'Isoraka', '101', -18.9045, 47.5210, '[[-18.898,47.514],[-18.898,47.528],[-18.912,47.528],[-18.912,47.514],[-18.898,47.514]]'),
+        (1, 'Andraharo', '101', -18.9200, 47.5170, '[[-18.914,47.509],[-18.914,47.525],[-18.928,47.525],[-18.928,47.509],[-18.914,47.509]]'),
+        (2, 'Ankorondrano', '101', -18.8830, 47.5220, '[[-18.875,47.513],[-18.875,47.531],[-18.892,47.531],[-18.892,47.513],[-18.875,47.513]]'),
+        (2, 'Mahamasina', '101', -18.8950, 47.5280, '[[-18.888,47.520],[-18.888,47.536],[-18.903,47.536],[-18.903,47.520],[-18.888,47.520]]'),
+        (3, 'Isotry', '101', -18.9080, 47.5080, '[[-18.900,47.498],[-18.900,47.516],[-18.916,47.516],[-18.916,47.498],[-18.900,47.498]]'),
+        (3, 'Ankazomiriotra', '101', -18.9180, 47.5050, '[[-18.910,47.495],[-18.910,47.514],[-18.926,47.514],[-18.926,47.495],[-18.910,47.495]]'),
+        (4, 'Ambohidratrimo', '102', -18.8520, 47.5050, '[[-18.838,47.493],[-18.838,47.517],[-18.866,47.517],[-18.866,47.493],[-18.838,47.493]]'),
+        (4, 'Ambohimanambola', '102', -18.8650, 47.5130, '[[-18.856,47.503],[-18.856,47.523],[-18.874,47.523],[-18.874,47.503],[-18.856,47.503]]'),
+        (5, 'Andohatapaka', '101', -18.8750, 47.5350, '[[-18.866,47.526],[-18.866,47.544],[-18.884,47.544],[-18.884,47.526],[-18.866,47.526]]'),
+        (5, 'Ankazotoatoa', '101', -18.8700, 47.5450, '[[-18.862,47.537],[-18.862,47.553],[-18.878,47.553],[-18.878,47.537],[-18.862,47.537]]'),
+        (6, 'Ambohijanaka', '101', -18.9350, 47.5180, '[[-18.926,47.508],[-18.926,47.528],[-18.944,47.528],[-18.944,47.508],[-18.926,47.508]]'),
+        (6, 'Talatamaty', '101', -18.9450, 47.5120, '[[-18.937,47.502],[-18.937,47.522],[-18.953,47.522],[-18.953,47.502],[-18.937,47.502]]')
+      `);
+      console.log('✅ Quartiers Antananarivo initialisés');
+    }
+  } catch (err) {
+    console.warn('⚠️ Seed quartiers:', err.message);
   }
 
   console.log('✅ Migrations exécutées');
