@@ -40,7 +40,8 @@ const insertInitialData = async () => {
       (4, 'En traitement', 'En cours de traitement', '#9C27B0', 4),
       (5, 'Résolue', 'Problème résolu', '#4CAF50', 5),
       (6, 'Clôturée', 'Doléance clôturée', '#9E9E9E', 6),
-      (7, 'Rejetée', 'Doléance rejetée', '#F44336', 7)
+      (7, 'Rejetée', 'Doléance rejetée', '#F44336', 7),
+      (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8)
     `);
     
     // Insertion des priorités
@@ -76,6 +77,29 @@ const insertInitialData = async () => {
       (6, 'Direction des Affaires Sociales', 'Gestion des aides sociales'),
       (7, 'Direction des Services Techniques', 'Gestion technique de la ville')
     `);
+
+    // Mise à jour des emails et infos des directions
+    await promisePool.execute(`
+      UPDATE directions SET email = 'voirie@mairie-tnr.mg', telephone = '+261 34 00 001', categorie = 'Technique', responsable = 'Directeur Voirie' WHERE id_direction = 1
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'environnement@mairie-tnr.mg', telephone = '+261 34 00 002', categorie = 'Environnement', responsable = 'Directeur Environnement' WHERE id_direction = 2
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'securite@mairie-tnr.mg', telephone = '+261 34 00 003', categorie = 'Sécurité', responsable = 'Directeur Sécurité' WHERE id_direction = 3
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'transports@mairie-tnr.mg', telephone = '+261 34 00 004', categorie = 'Transport', responsable = 'Directeur Transport' WHERE id_direction = 4
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'urbanisme@mairie-tnr.mg', telephone = '+261 34 00 005', categorie = 'Urbanisme', responsable = 'Directeur Urbanisme' WHERE id_direction = 5
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'social@mairie-tnr.mg', telephone = '+261 34 00 006', categorie = 'Social', responsable = 'Directeur Affaires Sociales' WHERE id_direction = 6
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET email = 'technique@mairie-tnr.mg', telephone = '+261 34 00 007', categorie = 'Technique', responsable = 'Directeur Services Techniques' WHERE id_direction = 7
+    `).catch(() => {});
     
     // Insertion des arrondissements
     await promisePool.execute(`
@@ -344,7 +368,11 @@ const runMigrations = async () => {
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_satisfaction TIMESTAMP NULL AFTER satisfaction_commentaire`,
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS lieu_exact TEXT AFTER longitude`,
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS suggestions TEXT AFTER lieu_exact`,
-    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS actif BOOLEAN DEFAULT TRUE AFTER description`
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS actif BOOLEAN DEFAULT TRUE AFTER description`,
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS email VARCHAR(150) NULL AFTER actif`,
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS telephone VARCHAR(30) NULL AFTER email`,
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS categorie VARCHAR(100) NULL AFTER telephone`,
+    `ALTER TABLE directions ADD COLUMN IF NOT EXISTS responsable VARCHAR(200) NULL AFTER categorie`
   ];
 
   // Création de la table password_reset_tokens
@@ -384,6 +412,18 @@ const runMigrations = async () => {
       }
     }
   }
+
+  // S'assurer que le statut 'transferee' existe
+  try {
+    await promisePool.execute(`
+      INSERT IGNORE INTO statuts (id_statut, nom_statut, description, couleur, ordre) 
+      VALUES (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8)
+    `);
+    console.log('✅ Statut transferee vérifié');
+  } catch (err) {
+    console.warn('⚠️ Statut transferee:', err.message);
+  }
+
   console.log('✅ Migrations exécutées');
 };
 

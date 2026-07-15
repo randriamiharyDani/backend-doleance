@@ -6,6 +6,8 @@ const referenceModel = require('../models/referenceModel');
 const reponseModel = require('../models/reponseModel');
 const historiqueModel = require('../models/historiqueModel');
 const transfertModel = require('../models/transfertModel');
+const directionModel = require('../models/directionModel');
+const { sendTransferEmail, sendStatusUpdateEmail, isSmtpConfigured } = require('../services/emailService');
 
 // ========== UPLOAD DES PIÈCES JOINTES ==========
 const handleUploadPiecesJointes = async (req, res) => {
@@ -312,10 +314,44 @@ const transfererDoleanceCentral = async (req, res) => {
 
       await connection.commit();
 
-      res.json({
-        success: true,
-        message: `Doléance ${doleance[0].reference} transférée vers ${direction[0].nom_direction}`,
-        data: { reference: doleance[0].reference, direction_destination: direction[0].nom_direction }
+      // Envoyer l'email à la direction après le commit
+      const emailDirection = direction[0].email;
+      if (!emailDirection) {
+        console.warn(`⚠️ Pas d'email configuré pour la direction "${direction[0].nom_direction}" — email de transfert non envoyé`);
+      }
+      
+      if (isSmtpConfigured() && emailDirection) {
+        const priorites = await referenceModel.getPriorites();
+        const priorite = priorites.find(p => p.id_priorite === doleance[0].id_priorite);
+        const citoyenNom = doleance[0].citoyen_nom
+          ? `${doleance[0].citoyen_prenom || ''} ${doleance[0].citoyen_nom}`.trim()
+          : 'Non renseigné';
+
+        sendTransferEmail(direction[0].email, direction[0].nom_direction, {
+          reference: doleance[0].reference,
+          titre: doleance[0].titre,
+          description: doleance[0].description,
+          categorie: doleance[0].nom_categorie,
+          priorite: priorite?.nom_priorite || 'Moyenne',
+          citoyen_nom: citoyenNom,
+          date_creation: doleance[0].date_creation,
+          lieu_exact: doleance[0].lieu_exact,
+          id_direction: id_direction,
+          motif: motif
+        }).catch(err => console.error('Erreur envoi email transfert:', err.message));
+      }
+
+      console.log('✅ Doléance transférée avec succès');
+      
+      const emailEnvoye = !!(emailDirection && isSmtpConfigured());
+      const messageRetour = emailEnvoye
+        ? `Doléance ${doleance[0].reference} transférée vers ${direction[0].nom_direction} — Email de notification envoyé à ${emailDirection}`
+        : `Doléance ${doleance[0].reference} transférée vers ${direction[0].nom_direction}${!emailDirection ? ' — Aucun email configuré pour cette direction' : ''}`;
+      
+      res.json({ 
+        success: true, 
+        message: messageRetour,
+        data: { reference: doleance[0].reference, direction_destination: direction[0].nom_direction, email_envoye: emailEnvoye }
       });
     } catch (error) {
       await connection.rollback();
@@ -597,6 +633,32 @@ const updateStatut = async (req, res) => {
       id_statut_nouveau: Number(id_statut),
       commentaire: commentaire || 'Mise à jour du statut'
     });
+
+    // Envoyer un email au citoyen si le statut change
+    if (isSmtpConfigured()) {
+      try {
+        const doleanceData = await doleanceModel.findById(id);
+        if (doleanceData.length > 0 && doleanceData[0].citoyen_email) {
+          const nouveauStatut = await referenceModel.getStatuts();
+          const statutTrouve = nouveauStatut.find(s => s.id_statut === Number(id_statut));
+          const nomStatut = statutTrouve?.nom_statut || 'Mis à jour';
+
+          sendStatusUpdateEmail(
+            doleanceData[0].citoyen_email,
+            doleanceData[0].citoyen_prenom || 'Citoyen',
+            {
+              reference: doleanceData[0].reference,
+              titre: doleanceData[0].titre,
+              id_direction: doleanceData[0].id_direction
+            },
+            nomStatut,
+            commentaire || null
+          ).catch(err => console.error('Erreur envoi email statut:', err.message));
+        }
+      } catch (emailErr) {
+        console.error('Erreur préparation email statut:', emailErr.message);
+      }
+    }
 
     res.json({ success: true, message: 'Statut mis à jour avec succès' });
   } catch (error) {

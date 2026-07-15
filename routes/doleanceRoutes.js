@@ -108,6 +108,15 @@ router.put('/:id/statut', authorize(
     'agent'
 ), updateStatut);
 
+router.patch('/:id/statut', authorize(
+    'administrateur_systeme',
+    'agent_central',
+    'administrateur',
+    'directeur',
+    'chef_service',
+    'agent'
+), updateStatut);
+
 // Mettre à jour la priorité
 router.put('/:id/priorite', authorize(
     'administrateur_systeme',

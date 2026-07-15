@@ -36,7 +36,7 @@ const getRoles = async () => {
 
 const findDirectionById = async (connection, id_direction) => {
   const [rows] = await connection.execute(
-    'SELECT id_direction, nom_direction FROM directions WHERE id_direction = ? AND actif = 1',
+    'SELECT id_direction, nom_direction, email, telephone, categorie, responsable FROM directions WHERE id_direction = ? AND actif = 1',
     [Number(id_direction)]
   );
   return rows;
