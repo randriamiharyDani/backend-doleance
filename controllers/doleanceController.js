@@ -838,6 +838,65 @@ const getStatsOverview = async (req, res) => {
   }
 };
 
+// ========== HISTORIQUE DES DOLÉANCES RÉSOLUES ==========
+const getHistorique = async (req, res) => {
+  try {
+    const { filter = 'month', page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    let dateCondition = '';
+    if (filter === 'week') {
+      dateCondition = "AND d.date_mise_a_jour >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+    } else if (filter === 'month') {
+      dateCondition = "AND d.date_mise_a_jour >= DATE_SUB(NOW(), INTERVAL 1 MONTH)";
+    } else if (filter === 'year') {
+      dateCondition = "AND d.date_mise_a_jour >= DATE_SUB(NOW(), INTERVAL 1 YEAR)";
+    }
+
+    const resolvedStatuses = `(SELECT id_statut FROM statuts WHERE nom_statut IN ('Résolue', 'Clôturée'))`;
+
+    const countQuery = `
+      SELECT COUNT(*) as total FROM doleances d
+      WHERE d.id_statut IN ${resolvedStatuses} ${dateCondition}
+    `;
+    const [countResult] = await pool.query(countQuery);
+    const total = countResult[0]?.total || 0;
+
+    const dataQuery = `
+      SELECT d.*, s.nom_statut, s.couleur as statut_couleur,
+             p.nom_priorite, p.niveau,
+             c.nom_categorie,
+             dir.nom_direction,
+             CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
+             ct.email as citoyen_email, ct.telephone as citoyen_telephone
+      FROM doleances d
+      LEFT JOIN statuts s ON d.id_statut = s.id_statut
+      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+      WHERE d.id_statut IN ${resolvedStatuses} ${dateCondition}
+      ORDER BY d.date_mise_a_jour DESC
+      LIMIT ? OFFSET ?
+    `;
+    const [rows] = await pool.query(dataQuery, [Number(limit), offset]);
+
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Historique error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ========== DONNÉES DE RÉFÉRENCE ==========
 const getCategories = async (req, res) => {
   try {
@@ -947,5 +1006,6 @@ module.exports = {
   sendReferenceByContact,
   getPiecesJointesByReference,
   getSuggestions,
-  getStatsOverview
+  getStatsOverview,
+  getHistorique
 };

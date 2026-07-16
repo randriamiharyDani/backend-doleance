@@ -34,7 +34,8 @@ const {
     getPiecesJointesByReference,
     getSuggestions,
     getStatsOverview,
-    getDoleancesAssignedLocations
+    getDoleancesAssignedLocations,
+    getHistorique
 } = require('../controllers/doleanceController');
 const { upload } = require('../models/pieceJointeModel');
 
@@ -70,6 +71,15 @@ router.get('/by-citizen/:identifiant', getDoleancesByCitizenId);
 // ========== ROUTES PROTÉGÉES (BACKOFFICE) ==========
 // Toutes les routes ci-dessous nécessitent une authentification
 router.use(protect);
+
+// ========== HISTORIQUE ==========
+router.get('/historique', authorize(
+    'administrateur_systeme',
+    'agent_central',
+    'administrateur',
+    'directeur',
+    'chef_service'
+), getHistorique);
 
 // ========== DOLÉANCES BACKOFFICE ==========
 // Route principale backoffice avec filtres
