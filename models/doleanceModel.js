@@ -19,13 +19,16 @@ const findById = async (id) => {
             p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction,
             ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
             ct.email as citoyen_email, ct.telephone as citoyen_telephone,
-            ct.adresse as citoyen_adresse
+            ct.adresse as citoyen_adresse,
+            q.nom_quartier, a.nom_arrondissement
      FROM doleances d
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
+     LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
      WHERE d.id_doleance = ?`,
     [id]
   );
