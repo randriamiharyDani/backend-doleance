@@ -165,7 +165,7 @@ io.on('connection', (socket) => {
   socket.on('authenticate', (token) => {
     try {
       const jwt = require('jsonwebtoken');
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
       socket.userId = decoded.id || decoded.id_utilisateur;
       socket.userName = decoded.nom || decoded.userName || 'Utilisateur';
       socket.join(`user_${socket.userId}`);

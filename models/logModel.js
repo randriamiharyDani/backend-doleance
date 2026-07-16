@@ -1,11 +1,16 @@
 const { pool } = require('../config/database');
 
 const create = async ({ id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent }) => {
-  const [result] = await pool.execute(
-    'INSERT INTO logs_activites (id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent, date_action) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-    [id_utilisateur || null, action, entity_type || null, entity_id || null, adresse_ip || null, user_agent || null]
-  );
-  return result.insertId;
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO logs_activites (id_utilisateur, action, entity_type, entity_id, adresse_ip, user_agent, date_action) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+      [id_utilisateur || null, action, entity_type || null, entity_id || null, adresse_ip || null, user_agent || null]
+    );
+    return result.insertId;
+  } catch (error) {
+    console.error('Erreur création log:', error.message);
+    return null;
+  }
 };
 
 const findByUser = async (id_utilisateur, { page = 1, limit = 50 }) => {

@@ -5,7 +5,7 @@ const utilisateurModel = require('../models/utilisateurModel');
 const logModel = require('../models/logModel');
 const { sendResetPasswordEmail, isSmtpConfigured } = require('../services/emailService');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret_key_default';
+const JWT_SECRET = require('../config/auth').JWT_SECRET;
 
 const login = async (req, res) => {
   try {
@@ -38,12 +38,16 @@ const login = async (req, res) => {
 
     await utilisateurModel.updateLastConnection(user.id_utilisateur);
 
-    await logModel.create({
-      id_utilisateur: user.id_utilisateur,
-      action: 'Connexion',
-      adresse_ip: req.ip || req.socket.remoteAddress || null,
-      user_agent: req.headers['user-agent'] || null
-    });
+    try {
+      await logModel.create({
+        id_utilisateur: user.id_utilisateur,
+        action: 'Connexion',
+        adresse_ip: req.ip || req.socket.remoteAddress || null,
+        user_agent: req.headers['user-agent'] || null
+      });
+    } catch (logErr) {
+      console.error('Erreur logging login:', logErr.message);
+    }
 
     res.json({
       success: true, token,

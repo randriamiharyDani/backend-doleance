@@ -6,8 +6,9 @@ const findByEmail = async (email) => {
 };
 
 const findByEmailWithPassword = async (email) => {
+  const passwordColumn = await getPasswordColumn();
   const [rows] = await pool.execute(
-    `SELECT u.*, r.nom_role, u.password as mot_de_passe
+    `SELECT u.*, r.nom_role, u.${passwordColumn} as mot_de_passe
      FROM utilisateurs u
      LEFT JOIN roles r ON u.id_role = r.id_role
      WHERE u.email = ?`,
@@ -97,7 +98,7 @@ const updateLastConnection = async (id) => {
 };
 
 const toggleActif = async (id, actif) => {
-  await pool.execute('UPDATE utilisateurs SET actif = ? WHERE id_utilisateur = ?', [actif, id]);
+  await pool.execute('UPDATE utilisateurs SET actif = ? WHERE id_utilisateur = ?', [actif ? 1 : 0, id]);
 };
 
 const deleteById = async (id) => {
