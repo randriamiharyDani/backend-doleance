@@ -131,7 +131,10 @@ const listPublic = async ({ categorie, statut, search, page = 1, limit = 10, sor
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
-const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorite, search, userId, userRole }) => {
+const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorite, search, userId, userRole, userDirectionId }) => {
+  const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
+  const isDirectionRole = !adminRoles.includes(userRole);
+
   let query = `
     SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
            CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
@@ -147,6 +150,16 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
   `;
   const params = [];
 
+  if (isDirectionRole) {
+    if (userDirectionId) {
+      query += ' AND d.id_direction = ?';
+      params.push(userDirectionId);
+    } else if (userId) {
+      query += ' AND (d.id_utilisateur_assignee = ? OR d.id_direction IS NULL)';
+      params.push(userId);
+    }
+  }
+
   if (categorie) { query += ' AND d.id_categorie = ?'; params.push(Number(categorie)); }
   if (statut) { query += ' AND d.id_statut = ?'; params.push(Number(statut)); }
   if (priorite) { query += ' AND d.id_priorite = ?'; params.push(Number(priorite)); }
@@ -158,6 +171,15 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
 
   let countWhere = '';
   const countParams = [];
+  if (isDirectionRole) {
+    if (userDirectionId) {
+      countWhere += ' AND d.id_direction = ?';
+      countParams.push(userDirectionId);
+    } else if (userId) {
+      countWhere += ' AND (d.id_utilisateur_assignee = ? OR d.id_direction IS NULL)';
+      countParams.push(userId);
+    }
+  }
   if (categorie) { countWhere += ' AND d.id_categorie = ?'; countParams.push(Number(categorie)); }
   if (statut) { countWhere += ' AND d.id_statut = ?'; countParams.push(Number(statut)); }
   if (priorite) { countWhere += ' AND d.id_priorite = ?'; countParams.push(Number(priorite)); }

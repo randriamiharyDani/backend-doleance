@@ -191,7 +191,8 @@ const getDoleancesPublic = async (req, res) => {
 const getDoleancesBackoffice = async (req, res) => {
   try {
     const userId = req.user?.id_utilisateur;
-    const userRole = req.user?.nom_role;
+    const userRole = req.user?.nom_role || req.user?.role_nom;
+    const userDirectionId = req.user?.id_direction;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Non authentifié' });
@@ -200,7 +201,8 @@ const getDoleancesBackoffice = async (req, res) => {
     const result = await doleanceModel.listBackoffice({
       ...req.query,
       userId,
-      userRole
+      userRole,
+      userDirectionId
     });
 
     res.json({
@@ -793,33 +795,52 @@ const updateDoleance = async (req, res) => {
 // ========== STATISTIQUES ==========
 const getStatsOverview = async (req, res) => {
   try {
-    const [total] = await pool.execute('SELECT COUNT(*) as total FROM doleances');
+    const userRole = req.user?.nom_role || req.user?.role_nom;
+    const userDirectionId = req.user?.id_direction;
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
+    const isDirectionRole = !adminRoles.includes(userRole);
+
+    let directionFilter = '';
+    let params = [];
+    if (isDirectionRole) {
+      if (userDirectionId) {
+        directionFilter = ' AND id_direction = ?';
+        params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(req.user?.id_utilisateur);
+      }
+    }
+
+    const [total] = await pool.execute(`SELECT COUNT(*) as total FROM doleances WHERE 1=1${directionFilter}`, params);
     const [enAttente] = await pool.execute(
-      "SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')"
+      `SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')${directionFilter}`, params
     );
     const [enCours] = await pool.execute(
-      "SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours')"
+      `SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours')${directionFilter}`, params
     );
     const [resolues] = await pool.execute(
-      "SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue')"
+      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue')${directionFilter}`, params
     );
 
     const [parCategorie] = await pool.execute(`
       SELECT c.nom_categorie, COUNT(d.id_doleance) as total
       FROM categories_doleance c
       LEFT JOIN doleances d ON c.id_categorie = d.id_categorie
+      WHERE 1=1${directionFilter}
       GROUP BY c.id_categorie
       ORDER BY total DESC
       LIMIT 5
-    `);
+    `, params);
 
     const [parPriorite] = await pool.execute(`
       SELECT p.nom_priorite, p.niveau, COUNT(d.id_doleance) as total
       FROM priorites p
       LEFT JOIN doleances d ON p.id_priorite = d.id_priorite
+      WHERE 1=1${directionFilter}
       GROUP BY p.id_priorite
       ORDER BY p.niveau DESC
-    `);
+    `, params);
 
     res.json({
       success: true,
@@ -841,8 +862,25 @@ const getStatsOverview = async (req, res) => {
 // ========== HISTORIQUE DES DOLÉANCES RÉSOLUES ==========
 const getHistorique = async (req, res) => {
   try {
-    const { filter = 'month', page = 1, limit = 20 } = req.query;
+    const { filter = 'month', page = 1, limit = 20, search } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
+
+    const userRole = req.user?.nom_role || req.user?.role_nom;
+    const userDirectionId = req.user?.id_direction;
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
+    const isDirectionRole = !adminRoles.includes(userRole);
+
+    let directionCondition = '';
+    let allParams = [];
+    if (isDirectionRole) {
+      if (userDirectionId) {
+        directionCondition = ' AND d.id_direction = ?';
+        allParams.push(userDirectionId);
+      } else {
+        directionCondition = ' AND d.id_utilisateur_assignee = ?';
+        allParams.push(req.user?.id_utilisateur);
+      }
+    }
 
     let dateCondition = '';
     if (filter === 'week') {
@@ -853,13 +891,22 @@ const getHistorique = async (req, res) => {
       dateCondition = "AND d.date_mise_a_jour >= DATE_SUB(NOW(), INTERVAL 1 YEAR)";
     }
 
+    let searchCondition = '';
+    let searchParams = [];
+    if (search && search.trim()) {
+      searchCondition = "AND (d.reference LIKE ? OR d.titre LIKE ?)";
+      const term = `%${search.trim()}%`;
+      searchParams = [term, term];
+    }
+
     const resolvedStatuses = `(SELECT id_statut FROM statuts WHERE nom_statut IN ('Résolue', 'Clôturée'))`;
 
+    const countParams = [...allParams, ...searchParams];
     const countQuery = `
       SELECT COUNT(*) as total FROM doleances d
-      WHERE d.id_statut IN ${resolvedStatuses} ${dateCondition}
+      WHERE d.id_statut IN ${resolvedStatuses} ${directionCondition} ${dateCondition} ${searchCondition}
     `;
-    const [countResult] = await pool.query(countQuery);
+    const [countResult] = await pool.query(countQuery, countParams);
     const total = countResult[0]?.total || 0;
 
     const dataQuery = `
@@ -875,11 +922,11 @@ const getHistorique = async (req, res) => {
       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
       LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      WHERE d.id_statut IN ${resolvedStatuses} ${dateCondition}
+      WHERE d.id_statut IN ${resolvedStatuses} ${directionCondition} ${dateCondition} ${searchCondition}
       ORDER BY d.date_mise_a_jour DESC
       LIMIT ? OFFSET ?
     `;
-    const [rows] = await pool.query(dataQuery, [Number(limit), offset]);
+    const [rows] = await pool.query(dataQuery, [...allParams, ...searchParams, Number(limit), offset]);
 
     res.json({
       success: true,

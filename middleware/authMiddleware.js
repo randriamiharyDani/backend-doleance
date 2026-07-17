@@ -312,7 +312,7 @@ const authorizeDoleance = () => {
     if (doleanceId) {
       try {
         const [doleance] = await pool.execute(
-          'SELECT id_direction FROM doleances WHERE id_doleance = ?',
+          'SELECT id_direction, id_utilisateur_assignee FROM doleances WHERE id_doleance = ?',
           [doleanceId]
         );
         
@@ -326,8 +326,14 @@ const authorizeDoleance = () => {
         );
         
         const userDirectionId = user[0]?.id_direction;
-        
+
+        // Accès par direction
         if (userDirectionId && doleance[0].id_direction === userDirectionId) {
+          return next();
+        }
+
+        // Accès par assignation personnelle
+        if (doleance[0].id_utilisateur_assignee === userId) {
           return next();
         }
         

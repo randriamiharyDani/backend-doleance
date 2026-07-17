@@ -17,6 +17,9 @@ const getDashboardStats = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -162,6 +165,9 @@ const getStatsByCategorie = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND d.id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND d.id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -182,6 +188,9 @@ const getStatsByCategorie = async (req, res) => {
       if (userDirectionId) {
         totalQuery += ' AND id_direction = ?';
         totalParams.push(userDirectionId);
+      } else {
+        totalQuery += ' AND id_utilisateur_assignee = ?';
+        totalParams.push(userId);
       }
     }
 
@@ -264,6 +273,9 @@ const getStatsByStatut = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND d.id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND d.id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -302,6 +314,9 @@ const getStatsByPriorite = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND d.id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND d.id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -341,6 +356,9 @@ const getEvolutionTemporelle = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -406,6 +424,9 @@ const getTempsTraitementMoyen = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 
@@ -528,6 +549,9 @@ const getTauxSatisfaction = async (req, res) => {
       if (userDirectionId) {
         directionFilter = ' AND id_direction = ?';
         params.push(userDirectionId);
+      } else {
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(userId);
       }
     }
 

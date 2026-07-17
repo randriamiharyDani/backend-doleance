@@ -32,7 +32,7 @@ const io = new Server(server, {
 const editingDoleances = {};
 
 // Stockage des utilisateurs connectés
-const onlineUsers = new Map(); // userId -> { socketId, userName, userRole, connectedAt }
+const onlineUsers = new Map(); // userId -> Map of socketId -> { userName, userRole, connectedAt }
 
 // ================================
 // Security middleware
@@ -143,13 +143,16 @@ app.use('/api/services', serviceRoutes);
 
 function broadcastOnlineUsers() {
   const users = [];
-  onlineUsers.forEach((value, key) => {
-    users.push({
-      userId: key,
-      userName: value.userName,
-      userRole: value.userRole,
-      connectedAt: value.connectedAt
-    });
+  onlineUsers.forEach((sockets, userId) => {
+    if (sockets.size > 0) {
+      const first = sockets.values().next().value;
+      users.push({
+        userId,
+        userName: first.userName,
+        userRole: first.userRole,
+        connectedAt: first.connectedAt
+      });
+    }
   });
   io.emit('online-users-updated', users);
 }
@@ -182,8 +185,10 @@ io.on('connection', (socket) => {
 
     const numericUserId = Number(userId);
 
-    onlineUsers.set(numericUserId, {
-      socketId: socket.id,
+    if (!onlineUsers.has(numericUserId)) {
+      onlineUsers.set(numericUserId, new Map());
+    }
+    onlineUsers.get(numericUserId).set(socket.id, {
       userName,
       userRole,
       connectedAt: new Date()
@@ -193,7 +198,7 @@ io.on('connection', (socket) => {
     socket.userName = userName;
     socket.join(`user_${numericUserId}`);
 
-    console.log(`👤 Utilisateur connecté : ${userName} (${numericUserId})`);
+    console.log(`👤 Utilisateur connecté : ${userName} (${numericUserId}) — socket ${socket.id}`);
 
     // Diffuser la liste mise à jour à tous les clients
     broadcastOnlineUsers();
@@ -202,7 +207,11 @@ io.on('connection', (socket) => {
   socket.on('user-disconnected', (userId) => {
     const numericUserId = Number(userId);
     if (numericUserId && onlineUsers.has(numericUserId)) {
-      onlineUsers.delete(numericUserId);
+      const sockets = onlineUsers.get(numericUserId);
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        onlineUsers.delete(numericUserId);
+      }
       console.log(`👤 Utilisateur déconnecté : ${numericUserId}`);
       broadcastOnlineUsers();
     }
@@ -395,10 +404,14 @@ io.on('connection', (socket) => {
   // ========== DECONNEXION ==========
 
   socket.on('disconnect', () => {
-    // Retirer l'utilisateur de la liste des connectés
+    // Retirer l'utilisateur de la liste des connectés (uniquement ce socket)
     if (socket.userId && onlineUsers.has(socket.userId)) {
-      onlineUsers.delete(socket.userId);
-      console.log(`👤 Utilisateur retiré de la liste en ligne : ${socket.userId}`);
+      const sockets = onlineUsers.get(socket.userId);
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        onlineUsers.delete(socket.userId);
+      }
+      console.log(`👤 Socket retiré de la liste en ligne : ${socket.userId} (${socket.id})`);
       broadcastOnlineUsers();
     }
 

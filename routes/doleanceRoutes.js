@@ -1,7 +1,7 @@
 // routes/doleanceRoutes.js
 const express = require('express');
 const router = express.Router();
-const { protect, authorize, isAgentCentral } = require('../middleware/authMiddleware');
+const { protect, authorize, isAgentCentral, authorizeDoleance } = require('../middleware/authMiddleware');
 const {
     createDoleance,
     getDoleances,
@@ -78,7 +78,8 @@ router.get('/historique', authorize(
     'agent_central',
     'administrateur',
     'directeur',
-    'chef_service'
+    'chef_service',
+    'agent'
 ), getHistorique);
 
 // ========== DOLÉANCES BACKOFFICE ==========
@@ -108,8 +109,9 @@ router.get('/:id', authorize(
     'agent_central', 
     'administrateur', 
     'directeur', 
+    'chef_service',
     'agent'
-), getDoleanceById);
+), authorizeDoleance(), getDoleanceById);
 
 // Modifier une doléance (titre, description, catégorie, etc.)
 router.put('/:id', authorize(
@@ -126,7 +128,7 @@ router.put('/:id/statut', authorize(
     'directeur',
     'chef_service',
     'agent'
-), updateStatut);
+), authorizeDoleance(), updateStatut);
 
 router.patch('/:id/statut', authorize(
     'administrateur_systeme',
@@ -135,7 +137,7 @@ router.patch('/:id/statut', authorize(
     'directeur',
     'chef_service',
     'agent'
-), updateStatut);
+), authorizeDoleance(), updateStatut);
 
 // Mettre à jour la priorité
 router.put('/:id/priorite', authorize(
@@ -152,7 +154,7 @@ router.post('/:id/reponses', authorize(
     'directeur',
     'chef_service',
     'agent'
-), addReponse);
+), authorizeDoleance(), addReponse);
 
 // Supprimer une doléance (admin et agent central uniquement)
 router.delete('/:id', authorize('agent_central', 'administrateur_systeme'), deleteDoleance);
@@ -176,7 +178,7 @@ router.get('/:id/pieces-jointes', authorize(
     'directeur',
     'chef_service',
     'agent'
-), getPiecesJointes);
+), authorizeDoleance(), getPiecesJointes);
 
 // Télécharger une pièce jointe spécifique
 router.get('/pieces/:id/download', authorize(
