@@ -8,6 +8,7 @@ const historiqueModel = require('../models/historiqueModel');
 const transfertModel = require('../models/transfertModel');
 const directionModel = require('../models/directionModel');
 const { sendTransferEmail, sendStatusUpdateEmail, isSmtpConfigured } = require('../services/emailService');
+const notificationController = require('./notificationController');
 
 // ========== UPLOAD DES PIÈCES JOINTES ==========
 const handleUploadPiecesJointes = async (req, res) => {
@@ -600,6 +601,11 @@ const createDoleance = async (req, res) => {
       });
 
       await connection.commit();
+
+      notificationController.notifyNewDoleance(req, {
+        id_doleance, reference, titre, id_direction: defaultDirection,
+        citoyenNom: `${nom_citoyen} ${prenom_citoyen}`
+      });
 
       res.status(201).json({
         success: true,

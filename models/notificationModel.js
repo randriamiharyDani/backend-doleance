@@ -10,12 +10,22 @@ const findByUser = async (id_utilisateur) => {
 
 const findRecentByUser = async (id_utilisateur, limit = 50) => {
   const [rows] = await pool.execute(
-    `SELECT n.* FROM notifications n
-     WHERE n.id_utilisateur = ? OR n.pour_tous = 1
+    `SELECT n.*, d.reference as doleance_reference, d.titre as doleance_titre
+     FROM notifications n
+     LEFT JOIN doleances d ON n.id_doleance = d.id_doleance
+     WHERE n.id_destinataire = ?
      ORDER BY n.date_notification DESC LIMIT ?`,
-    [id_utilisateur, limit]
+    [id_utilisateur, String(limit)]
   );
   return rows;
+};
+
+const countUnreadByUser = async (id_utilisateur) => {
+  const [rows] = await pool.execute(
+    'SELECT COUNT(*) as count FROM notifications WHERE id_destinataire = ? AND lu = 0',
+    [id_utilisateur]
+  );
+  return rows[0]?.count || 0;
 };
 
 const create = async ({ id_destinataire, id_doleance, type, titre, message, donnees }) => {
@@ -55,9 +65,9 @@ const findUtilisateursByDirection = async (id_direction) => {
 const findAdminIds = async () => {
   const [rows] = await pool.execute(
     `SELECT id_utilisateur FROM utilisateurs
-     WHERE id_role = (SELECT id_role FROM roles WHERE nom_role = 'administrateur_systeme')`
+     WHERE id_role IN (SELECT id_role FROM roles WHERE nom_role IN ('administrateur_systeme', 'administrateur', 'agent_central'))`
   );
   return rows;
 };
 
-module.exports = { findByUser, findRecentByUser, create, markAsRead, markAllAsRead, deleteById, findUtilisateursByDirection, findAdminIds };
+module.exports = { findByUser, findRecentByUser, countUnreadByUser, create, markAsRead, markAllAsRead, deleteById, findUtilisateursByDirection, findAdminIds };
