@@ -958,7 +958,13 @@ const getHistorique = async (req, res) => {
 // ========== DONNÉES DE RÉFÉRENCE ==========
 const getCategories = async (req, res) => {
   try {
-    const data = await referenceModel.getCategories();
+    const { module } = req.query;
+    let data;
+    if (module) {
+      data = await referenceModel.getCategoriesByModule(module);
+    } else {
+      data = await referenceModel.getCategories();
+    }
     res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, data: [] });

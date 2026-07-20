@@ -1,8 +1,49 @@
 const { pool } = require('../config/database');
 
 const getCategories = async () => {
-  const [rows] = await pool.execute('SELECT * FROM categories_doleance ORDER BY nom_categorie');
+  const [rows] = await pool.execute('SELECT * FROM categories_doleance ORDER BY module, nom_categorie');
   return rows;
+};
+
+const getCategoriesByModule = async (module) => {
+  const [rows] = await pool.execute(
+    'SELECT * FROM categories_doleance WHERE module = ? AND actif = 1 ORDER BY nom_categorie',
+    [module]
+  );
+  return rows;
+};
+
+const getCategorieById = async (id) => {
+  const [rows] = await pool.execute('SELECT * FROM categories_doleance WHERE id_categorie = ?', [id]);
+  return rows[0];
+};
+
+const createCategorie = async (data) => {
+  const { nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module } = data;
+  const [result] = await pool.execute(
+    `INSERT INTO categories_doleance (nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [nom_categorie, nom_malgache || null, description || null, direction_concernee || null, couleur || null, icone || null, module || 'CUA']
+  );
+  return result.insertId;
+};
+
+const updateCategorie = async (id, data) => {
+  const { nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif } = data;
+  const [result] = await pool.execute(
+    `UPDATE categories_doleance SET
+       nom_categorie = ?, nom_malgache = ?, description = ?, direction_concernee = ?,
+       couleur = ?, icone = ?, module = ?, actif = ?
+     WHERE id_categorie = ?`,
+    [nom_categorie, nom_malgache || null, description || null, direction_concernee || null,
+     couleur || null, icone || null, module || 'CUA', actif !== undefined ? actif : 1, id]
+  );
+  return result.affectedRows;
+};
+
+const deleteCategorie = async (id) => {
+  const [result] = await pool.execute('DELETE FROM categories_doleance WHERE id_categorie = ?', [id]);
+  return result.affectedRows;
 };
 
 const getStatuts = async () => {
@@ -22,7 +63,7 @@ const getDirections = async () => {
 
 const getQuartiers = async () => {
   const [rows] = await pool.execute(`
-    SELECT q.*, a.nom_arrondissement 
+    SELECT q.*, a.nom_arrondissement
     FROM quartiers q
     LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
   `);
@@ -103,4 +144,4 @@ const findByReference = async (reference) => {
     return rows;
 };
 
-module.exports = { getCategories, getStatuts, getPriorites, getDirections, getQuartiers, getQuartiersGeoJSON, getRoles, findDirectionById, findFirstDirection, findStatutByNom ,findByReference };
+module.exports = { getCategories, getCategoriesByModule, getCategorieById, createCategorie, updateCategorie, deleteCategorie, getStatuts, getPriorites, getDirections, getQuartiers, getQuartiersGeoJSON, getRoles, findDirectionById, findFirstDirection, findStatutByNom ,findByReference };

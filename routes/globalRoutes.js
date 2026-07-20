@@ -7,7 +7,7 @@ const {
   getDirections, getDirectionById, createDirection, updateDirection, deleteDirection,
   getDoleances, getDoleanceById, createDoleance, updateDoleance, deleteDoleance,
   getCitoyens, getCitoyenById, createCitoyen,
-  getCategories, getCategorieById, createCategorie,
+  getCategories, getCategorieById, createCategorie, updateCategorie, deleteCategorie,
   getStatuts, getPriorites, getQuartiers, getArrondissements,
   getReponses, createReponse,
   getAssignations, createAssignation,
@@ -73,9 +73,10 @@ router.get('/citoyens/:id', getCitoyenById);
 router.post('/citoyens', createCitoyen);
 
 // Catégories
-router.get('/categories', getCategories);
-router.get('/categories/:id', getCategorieById);
+router.get('/categories/:id', authorize('administrateur_systeme'), getCategorieById);
 router.post('/categories', authorize('administrateur_systeme'), createCategorie);
+router.put('/categories/:id', authorize('administrateur_systeme'), updateCategorie);
+router.delete('/categories/:id', authorize('administrateur_systeme'), deleteCategorie);
 
 // Réponses
 router.get('/reponses', getReponses);

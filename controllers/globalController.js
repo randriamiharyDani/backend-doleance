@@ -296,7 +296,10 @@ const createCitoyen = async (req, res) => {
 // ==================== 6. TABLE categories_doleance ====================
 const getCategories = async (req, res) => {
   try {
-    const categories = await referenceModel.getCategories();
+    const { module } = req.query;
+    const categories = module
+      ? await referenceModel.getCategoriesByModule(module)
+      : await referenceModel.getCategories();
     res.json({ success: true, data: categories });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -306,8 +309,8 @@ const getCategories = async (req, res) => {
 const getCategorieById = async (req, res) => {
   try {
     const { id } = req.params;
-    const [categories] = await pool.execute('SELECT * FROM categories_doleance WHERE id_categorie = ?', [id]);
-    res.json({ success: true, data: categories[0] });
+    const categorie = await referenceModel.getCategorieById(id);
+    res.json({ success: true, data: categorie });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -315,13 +318,44 @@ const getCategorieById = async (req, res) => {
 
 const createCategorie = async (req, res) => {
   try {
-    const { nom_categorie, description, couleur, icone } = req.body;
-    const [result] = await pool.execute(
-      'INSERT INTO categories_doleance (nom_categorie, description, couleur, icone) VALUES (?, ?, ?, ?)',
-      [nom_categorie, description, couleur, icone]
-    );
-    res.status(201).json({ success: true, data: { id: result.insertId } });
+    const { nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module } = req.body;
+    if (!nom_categorie) {
+      return res.status(400).json({ success: false, message: 'Le nom de la catégorie est requis' });
+    }
+    const id = await referenceModel.createCategorie({ nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module });
+    res.status(201).json({ success: true, data: { id_categorie: id } });
   } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const updateCategorie = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    const affected = await referenceModel.updateCategorie(id, data);
+    if (affected === 0) {
+      return res.status(404).json({ success: false, message: 'Catégorie non trouvée' });
+    }
+    const categorie = await referenceModel.getCategorieById(id);
+    res.json({ success: true, data: categorie });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const deleteCategorie = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const affected = await referenceModel.deleteCategorie(id);
+    if (affected === 0) {
+      return res.status(404).json({ success: false, message: 'Catégorie non trouvée' });
+    }
+    res.json({ success: true, message: 'Catégorie supprimée avec succès' });
+  } catch (error) {
+    if (error.errno === 1451) {
+      return res.status(409).json({ success: false, message: 'Impossible de supprimer : des doléances sont liées à cette catégorie' });
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -615,7 +649,7 @@ module.exports = {
   getDirections, getDirectionById, createDirection, updateDirection, deleteDirection,
   getDoleances, getDoleanceById, createDoleance, updateDoleance, deleteDoleance,
   getCitoyens, getCitoyenById, createCitoyen,
-  getCategories, getCategorieById, createCategorie,
+  getCategories, getCategorieById, createCategorie, updateCategorie, deleteCategorie,
   getStatuts,
   getPriorites,
   getQuartiers,

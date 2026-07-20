@@ -127,6 +127,7 @@ const transfertRoutes = require('./routes/transfertRoutes');
 const directionRoutes = require('./routes/directionRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const corbeilleRoutes = require('./routes/corbeilleRoutes');
+const globalRoutes = require('./routes/globalRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/doleances', doleanceRoutes);
@@ -138,6 +139,7 @@ app.use('/api/transfert', transfertRoutes);
 app.use('/api/directions', directionRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/corbeille', corbeilleRoutes);
+app.use('/api', globalRoutes);
 
 // ================================
 // SOCKET.IO - Fonction broadcast

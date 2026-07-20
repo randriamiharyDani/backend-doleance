@@ -56,15 +56,22 @@ const insertInitialData = async () => {
     
     // Insertion des catégories
     await promisePool.execute(`
-      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, description, couleur, icone) VALUES
-      (1, 'Voirie', 'Problèmes de routes, trottoirs et signalisation', '#2196F3', 'road'),
-      (2, 'Éclairage public', "Pannes d'éclairage et lampadaires", '#FFC107', 'lightbulb'),
-      (3, 'Salubrité', 'Propreté, déchets et nuisance', '#4CAF50', 'trash'),
-      (4, 'Espaces verts', 'Parcs, jardins et espaces naturels', '#8BC34A', 'tree'),
-      (5, 'Transport', 'Problèmes de transport en commun', '#9C27B0', 'bus'),
-      (6, 'Sécurité', 'Problèmes de sécurité publique', '#F44336', 'security'),
-      (7, 'Urbanisme', 'Permis de construire et aménagement', '#795548', 'building'),
-      (8, 'Social', 'Aides sociales et services publics', '#E91E63', 'people')
+      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif) VALUES
+      (1, 'Voirie', 'Lalana', 'Problèmes de routes, trottoirs et signalisation', 'Direction de la Voirie', '#2196F3', 'road', 'CUA', 1),
+      (2, 'Éclairage public', 'Jiro', "Pannes d'éclairage et lampadaires", 'Direction de la Voirie', '#FFC107', 'lightbulb', 'CUA', 1),
+      (3, 'Salubrité', 'Hadioana', 'Propreté, déchets et nuisance', "Direction de l'Environnement", '#4CAF50', 'trash', 'CUA', 1),
+      (4, 'Espaces verts', 'Faritra maitso', 'Parcs, jardins et espaces naturels', "Direction de l'Environnement", '#8BC34A', 'tree', 'CUA', 1),
+      (5, 'Transport', 'Fifindrana', 'Problèmes de transport en commun', 'Direction des Transports', '#9C27B0', 'bus', 'CUA', 1),
+      (6, 'Sécurité', 'Fiarovana', 'Problèmes de sécurité publique', 'Direction de la Sécurité', '#F44336', 'security', 'CUA', 1),
+      (7, 'Urbanisme', 'Fandaminana ny tanàna', 'Permis de construire et aménagement', "Direction de l'Urbanisme", '#795548', 'building', 'CUA', 1),
+      (8, 'Social', 'Sosialy', 'Aides sociales et services publics', 'Direction des Affaires Sociales', '#E91E63', 'people', 'CUA', 1),
+      (9, 'Incendie', 'Afo', 'Incendies domestiques et industriels', 'Service Incendie', '#EF4444', 'fire', 'Sapeurs-Pompiers', 1),
+      (10, 'Accident de circulation', 'Loza', 'Accidents de la route et secours', 'Service Secours', '#F97316', 'accident', 'Sapeurs-Pompiers', 1),
+      (11, 'Secours à personne', 'Fanavotana', 'Personnes en danger ou blessées', 'Service Secours', '#3B82F6', 'medical', 'Sapeurs-Pompiers', 1),
+      (12, 'Inondation', 'Tondra-drano', 'Zones inondées et assistance', 'Service Protection Civile', '#06B6D4', 'flood', 'Sapeurs-Pompiers', 1),
+      (13, 'Catastrophe naturelle', 'Loza voajanahary', 'Tremblements de terre, cyclones', 'Service Protection Civile', '#8B5CF6', 'disaster', 'Sapeurs-Pompiers', 1),
+      (14, 'Animal dangereux', 'Biby mampidi-doza', 'Animaux errants ou dangereux', 'Service Animalier', '#84CC16', 'animal', 'Sapeurs-Pompiers', 1),
+      (15, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Service Risques', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1)
     `);
     
     // Insertion des directions
@@ -378,7 +385,11 @@ const runMigrations = async () => {
     `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS longitude_centre DOUBLE NULL AFTER latitude_centre`,
     `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS boundary JSON NULL AFTER longitude_centre`,
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS supprime TINYINT(1) DEFAULT 0 AFTER date_mise_a_jour`,
-    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_suppression TIMESTAMP NULL AFTER supprime`
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_suppression TIMESTAMP NULL AFTER supprime`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS nom_malgache VARCHAR(200) NULL AFTER nom_categorie`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS direction_concernee VARCHAR(200) NULL AFTER description`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers') DEFAULT 'CUA' AFTER direction_concernee`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`
   ];
 
   // Création de la table password_reset_tokens
