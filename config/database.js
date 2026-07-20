@@ -375,7 +375,9 @@ const runMigrations = async () => {
     `ALTER TABLE directions ADD COLUMN IF NOT EXISTS responsable VARCHAR(200) NULL AFTER categorie`,
     `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS latitude_centre DOUBLE NULL AFTER code_postal`,
     `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS longitude_centre DOUBLE NULL AFTER latitude_centre`,
-    `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS boundary JSON NULL AFTER longitude_centre`
+    `ALTER TABLE quartiers ADD COLUMN IF NOT EXISTS boundary JSON NULL AFTER longitude_centre`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS supprime TINYINT(1) DEFAULT 0 AFTER date_mise_a_jour`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_suppression TIMESTAMP NULL AFTER supprime`
   ];
 
   // Création de la table password_reset_tokens
@@ -415,6 +417,14 @@ const runMigrations = async () => {
       }
     }
   }
+
+  // Index corbeille
+  try {
+    await promisePool.execute('CREATE INDEX idx_doleances_supprime ON doleances(supprime)');
+  } catch (_) {}
+  try {
+    await promisePool.execute('CREATE INDEX idx_doleances_date_suppression ON doleances(date_suppression)');
+  } catch (_) {}
 
   // S'assurer que le statut 'transferee' existe
   try {

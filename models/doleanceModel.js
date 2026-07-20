@@ -29,6 +29,28 @@ const findById = async (id) => {
      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
      LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
      LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
+     WHERE d.id_doleance = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
+    [id]
+  );
+  return rows;
+};
+
+const findByIdIncludeTrashed = async (id) => {
+  const [rows] = await pool.execute(
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur,
+            p.nom_priorite, p.niveau, c.nom_categorie, dir.nom_direction,
+            ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
+            ct.email as citoyen_email, ct.telephone as citoyen_telephone,
+            ct.adresse as citoyen_adresse,
+            q.nom_quartier, a.nom_arrondissement
+     FROM doleances d
+     LEFT JOIN statuts s ON d.id_statut = s.id_statut
+     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
+     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
+     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
+     LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
      WHERE d.id_doleance = ?`,
     [id]
   );
@@ -43,7 +65,7 @@ const findByReference = async (reference) => {
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
-     WHERE d.reference = ?`,
+     WHERE d.reference = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
     [reference]
   );
   return rows;
@@ -57,7 +79,7 @@ const findByReferenceAndCitoyen = async (reference, id_citoyen) => {
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-     WHERE d.reference = ? AND d.id_citoyen = ?`,
+     WHERE d.reference = ? AND d.id_citoyen = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
     [reference, id_citoyen]
   );
   return rows;
@@ -71,7 +93,7 @@ const findByCitoyenId = async (id_citoyen) => {
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-     WHERE d.id_citoyen = ?
+     WHERE d.id_citoyen = ? AND (d.supprime IS NULL OR d.supprime = 0)
      ORDER BY d.date_creation DESC`,
     [id_citoyen]
   );
@@ -91,7 +113,7 @@ const listPublic = async ({ categorie, statut, search, page = 1, limit = 10, sor
     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-    WHERE 1=1
+     WHERE (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
 
@@ -103,7 +125,7 @@ const listPublic = async ({ categorie, statut, search, page = 1, limit = 10, sor
     params.push(term, term, term);
   }
 
-  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
+  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE (supprime IS NULL OR supprime = 0)';
   const countParams = [];
   if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
   if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
@@ -146,7 +168,7 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-    WHERE 1=1
+     WHERE (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
 
@@ -190,7 +212,7 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
   }
 
   const [countResult] = await pool.execute(
-    `SELECT COUNT(*) as total FROM doleances d WHERE 1=1 ${countWhere}`,
+    `SELECT COUNT(*) as total FROM doleances d WHERE (d.supprime IS NULL OR d.supprime = 0) ${countWhere}`,
     countParams
   );
   const total = countResult[0]?.total || 0;
@@ -215,7 +237,7 @@ const list = async ({ page = 1, limit = 10, categorie, statut, priorite, search 
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-    WHERE 1=1
+     WHERE (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
 
@@ -228,7 +250,7 @@ const list = async ({ page = 1, limit = 10, categorie, statut, priorite, search 
     params.push(term, term, term);
   }
 
-  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE 1=1';
+  let countQuery = 'SELECT COUNT(*) as total FROM doleances d WHERE (supprime IS NULL OR supprime = 0)';
   const countParams = [];
   if (categorie) { countQuery += ' AND id_categorie = ?'; countParams.push(Number(categorie)); }
   if (statut) { countQuery += ' AND id_statut = ?'; countParams.push(Number(statut)); }
@@ -263,6 +285,7 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
+    AND (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
 
@@ -275,7 +298,8 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
 
   const [countResult] = await pool.execute(
     `SELECT COUNT(*) as total FROM doleances d 
-     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')`
+     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
+     AND (d.supprime IS NULL OR d.supprime = 0)`
   );
   const total = countResult[0]?.total || 0;
 
@@ -368,6 +392,108 @@ const deleteById = async (id_doleance) => {
   await pool.execute('DELETE FROM doleances WHERE id_doleance = ?', [id_doleance]);
 };
 
+const softDelete = async (id_doleance) => {
+  await pool.execute(
+    'UPDATE doleances SET supprime = 1, date_suppression = NOW() WHERE id_doleance = ? AND (supprime IS NULL OR supprime = 0)',
+    [id_doleance]
+  );
+};
+
+const restore = async (id_doleance) => {
+  await pool.execute(
+    'UPDATE doleances SET supprime = 0, date_suppression = NULL WHERE id_doleance = ?',
+    [id_doleance]
+  );
+};
+
+const listTrashed = async ({ page = 1, limit = 10, search, direction, dateFrom, dateTo }) => {
+  let query = `
+    SELECT d.id_doleance, d.reference, d.titre, d.date_creation, d.date_suppression,
+           d.id_statut, d.id_direction,
+           s.nom_statut, s.couleur as statut_couleur,
+           dir.nom_direction,
+           CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom
+    FROM doleances d
+    LEFT JOIN statuts s ON d.id_statut = s.id_statut
+    LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+    LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
+    WHERE d.supprime = 1
+  `;
+  const params = [];
+
+  if (search) {
+    query += " AND (d.reference LIKE ? OR d.titre LIKE ? OR CONCAT(ct.nom, ' ', ct.prenom) LIKE ?)";
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+  if (direction) {
+    query += ' AND d.id_direction = ?';
+    params.push(Number(direction));
+  }
+  if (dateFrom) {
+    query += ' AND d.date_suppression >= ?';
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    query += ' AND d.date_suppression <= ?';
+    params.push(dateTo + ' 23:59:59');
+  }
+
+  let countQuery = 'SELECT COUNT(*) as total FROM doleances d LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen WHERE d.supprime = 1';
+  const countParams = [];
+  if (search) {
+    countQuery += ' AND (d.reference LIKE ? OR d.titre LIKE ? OR CONCAT(ct.nom, " ", ct.prenom) LIKE ?)';
+    const term = `%${search}%`;
+    countParams.push(term, term, term);
+  }
+  if (direction) {
+    countQuery += ' AND d.id_direction = ?';
+    countParams.push(Number(direction));
+  }
+  if (dateFrom) {
+    countQuery += ' AND d.date_suppression >= ?';
+    countParams.push(dateFrom);
+  }
+  if (dateTo) {
+    countQuery += ' AND d.date_suppression <= ?';
+    countParams.push(dateTo + ' 23:59:59');
+  }
+
+  const [countResult] = await pool.execute(countQuery, countParams);
+  const total = countResult[0]?.total || 0;
+
+  const offset = (Number(page) - 1) * Number(limit);
+  query += ' ORDER BY d.date_suppression DESC LIMIT ? OFFSET ?';
+  params.push(Number(limit), offset);
+
+  const [rows] = await pool.query(query, params);
+  return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
+};
+
+const countTrashed = async () => {
+  const [rows] = await pool.execute('SELECT COUNT(*) as total FROM doleances WHERE supprime = 1');
+  return rows[0]?.total || 0;
+};
+
+const permanentDelete = async (id_doleance) => {
+  await pool.execute('DELETE FROM doleances WHERE id_doleance = ? AND supprime = 1', [id_doleance]);
+};
+
+const emptyTrash = async () => {
+  const [result] = await pool.execute('DELETE FROM doleances WHERE supprime = 1');
+  return result.affectedRows;
+};
+
+const emptyTrashSelected = async (ids) => {
+  if (!ids || ids.length === 0) return 0;
+  const placeholders = ids.map(() => '?').join(',');
+  const [result] = await pool.execute(
+    `DELETE FROM doleances WHERE id_doleance IN (${placeholders}) AND supprime = 1`,
+    ids
+  );
+  return result.affectedRows;
+};
+
 const searchSuggestions = async (q) => {
   const searchTerm = `%${q}%`;
   const [rows] = await pool.execute(
@@ -393,18 +519,20 @@ const listAssignedLocations = async () => {
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN utilisateurs u ON d.id_utilisateur_assignee = u.id_utilisateur
-     WHERE d.latitude IS NOT NULL 
-       AND d.longitude IS NOT NULL
-       AND d.id_utilisateur_assignee IS NOT NULL`
+      WHERE d.latitude IS NOT NULL 
+        AND d.longitude IS NOT NULL
+        AND d.id_utilisateur_assignee IS NOT NULL
+        AND (d.supprime IS NULL OR d.supprime = 0)`
   );
   return rows;
 };
 
 module.exports = {
-  generateReference, findById, findByReference, findByReferenceAndCitoyen,
+  generateReference, findById, findByIdIncludeTrashed, findByReference, findByReferenceAndCitoyen,
   findByCitoyenId, listPublic, listBackoffice, list, listEnAttenteTransfert,
   create, updateStatut, getCurrentStatut, updatePriorite, updateDoleance, updateCitoyen,
   updateDirectionAndStatut, addSatisfaction, deleteById,
+  softDelete, restore, listTrashed, countTrashed, permanentDelete, emptyTrash, emptyTrashSelected,
   searchSuggestions, getDefaultDirection,
   listAssignedLocations
 };

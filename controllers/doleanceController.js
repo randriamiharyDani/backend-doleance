@@ -709,18 +709,19 @@ const addSatisfaction = async (req, res) => {
   }
 };
 
-// ========== SUPPRIMER UNE DOLÉANCE ==========
+// ========== SUPPRIMER UNE DOLÉANCE (SOFT DELETE) ==========
 const deleteDoleance = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await pieceJointeModel.deleteByDoleanceId(id);
-    await pool.execute('DELETE FROM reponses WHERE id_doleance = ?', [id]);
-    await pool.execute('DELETE FROM historique_statuts WHERE id_doleance = ?', [id]);
-    await pool.execute('DELETE FROM transferts WHERE id_doleance = ?', [id]);
-    await doleanceModel.deleteById(id);
+    const doleance = await doleanceModel.findById(id);
+    if (doleance.length === 0) {
+      return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
+    }
 
-    res.json({ success: true, message: 'Doléance supprimée avec succès' });
+    await doleanceModel.softDelete(id);
+
+    res.json({ success: true, message: 'Doléance déplacée vers la corbeille' });
   } catch (error) {
     console.error('Delete doleance error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -818,22 +819,22 @@ const getStatsOverview = async (req, res) => {
       }
     }
 
-    const [total] = await pool.execute(`SELECT COUNT(*) as total FROM doleances WHERE 1=1${directionFilter}`, params);
+    const [total] = await pool.execute(`SELECT COUNT(*) as total FROM doleances WHERE (supprime IS NULL OR supprime = 0)${directionFilter}`, params);
     const [enAttente] = await pool.execute(
-      `SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')${directionFilter}`, params
+      `SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [enCours] = await pool.execute(
-      `SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours')${directionFilter}`, params
+      `SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [resolues] = await pool.execute(
-      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue')${directionFilter}`, params
+      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
 
     const [parCategorie] = await pool.execute(`
       SELECT c.nom_categorie, COUNT(d.id_doleance) as total
       FROM categories_doleance c
-      LEFT JOIN doleances d ON c.id_categorie = d.id_categorie
-      WHERE 1=1${directionFilter}
+      LEFT JOIN doleances d ON c.id_categorie = d.id_categorie AND (d.supprime IS NULL OR d.supprime = 0)
+      WHERE 1=1${directionFilter.replace(/id_direction/g, 'd.id_direction').replace(/id_utilisateur_assignee/g, 'd.id_utilisateur_assignee')}
       GROUP BY c.id_categorie
       ORDER BY total DESC
       LIMIT 5
@@ -842,8 +843,8 @@ const getStatsOverview = async (req, res) => {
     const [parPriorite] = await pool.execute(`
       SELECT p.nom_priorite, p.niveau, COUNT(d.id_doleance) as total
       FROM priorites p
-      LEFT JOIN doleances d ON p.id_priorite = d.id_priorite
-      WHERE 1=1${directionFilter}
+      LEFT JOIN doleances d ON p.id_priorite = d.id_priorite AND (d.supprime IS NULL OR d.supprime = 0)
+      WHERE 1=1${directionFilter.replace(/id_direction/g, 'd.id_direction').replace(/id_utilisateur_assignee/g, 'd.id_utilisateur_assignee')}
       GROUP BY p.id_priorite
       ORDER BY p.niveau DESC
     `, params);
@@ -910,7 +911,7 @@ const getHistorique = async (req, res) => {
     const countParams = [...allParams, ...searchParams];
     const countQuery = `
       SELECT COUNT(*) as total FROM doleances d
-      WHERE d.id_statut IN ${resolvedStatuses} ${directionCondition} ${dateCondition} ${searchCondition}
+      WHERE d.id_statut IN ${resolvedStatuses} AND (d.supprime IS NULL OR d.supprime = 0) ${directionCondition} ${dateCondition} ${searchCondition}
     `;
     const [countResult] = await pool.query(countQuery, countParams);
     const total = countResult[0]?.total || 0;
@@ -928,7 +929,7 @@ const getHistorique = async (req, res) => {
       LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
       LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-      WHERE d.id_statut IN ${resolvedStatuses} ${directionCondition} ${dateCondition} ${searchCondition}
+      WHERE d.id_statut IN ${resolvedStatuses} AND (d.supprime IS NULL OR d.supprime = 0) ${directionCondition} ${dateCondition} ${searchCondition}
       ORDER BY d.date_mise_a_jour DESC
       LIMIT ? OFFSET ?
     `;
