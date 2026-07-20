@@ -41,9 +41,9 @@ const getDashboardStats = async (req, res) => {
       params
     );
 
-    // Doléances urgentes
+    // Doléances urgentes (statut Urgente OU priorité urgente)
     const [urgentesResult] = await pool.execute(
-      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4 ${directionFilter}`,
+      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = 9 OR id_priorite = 4 ${directionFilter}`,
       params
     );
 
@@ -53,7 +53,7 @@ const getDashboardStats = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
         SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
-        SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
+        SUM(CASE WHEN id_statut = 9 OR id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
       FROM doleances
       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,
       params
@@ -64,7 +64,7 @@ const getDashboardStats = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
         SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
-        SUM(CASE WHEN id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
+        SUM(CASE WHEN id_statut = 9 OR id_priorite = 4 THEN 1 ELSE 0 END) as urgentes
       FROM doleances
       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 2 MONTH)
         AND date_creation < DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,

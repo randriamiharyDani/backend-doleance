@@ -230,7 +230,9 @@ const sendStatusUpdateEmail = async (emailCitoyen, prenomCitoyen, doleance, nouv
     'Rejetée': '#F44336',
     'En attente': '#FFC107',
     'Assignée': '#2196F3',
-    'Clôturée': '#9E9E9E'
+    'Clôturée': '#9E9E9E',
+    'Nouvelle': '#FF9800',
+    'Urgente': '#DC2626'
   };
 
   const couleur = statutCouleurs[nouveauStatut] || '#6B7280';

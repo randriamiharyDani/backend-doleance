@@ -41,7 +41,8 @@ const insertInitialData = async () => {
       (5, 'Résolue', 'Problème résolu', '#4CAF50', 5),
       (6, 'Clôturée', 'Doléance clôturée', '#9E9E9E', 6),
       (7, 'Rejetée', 'Doléance rejetée', '#F44336', 7),
-      (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8)
+      (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8),
+      (9, 'Urgente', 'Doléance nécessitant une intervention urgente', '#DC2626', 9)
     `);
     
     // Insertion des priorités
@@ -435,6 +436,17 @@ const runMigrations = async () => {
     console.log('✅ Statut transferee vérifié');
   } catch (err) {
     console.warn('⚠️ Statut transferee:', err.message);
+  }
+
+  // S'assurer que le statut 'Urgente' existe
+  try {
+    await promisePool.execute(`
+      INSERT IGNORE INTO statuts (id_statut, nom_statut, description, couleur, ordre) 
+      VALUES (9, 'Urgente', 'Doléance nécessitant une intervention urgente', '#DC2626', 9)
+    `);
+    console.log('✅ Statut Urgente vérifié');
+  } catch (err) {
+    console.warn('⚠️ Statut Urgente:', err.message);
   }
 
   // Seed des quartiers d'Antananarivo avec limites

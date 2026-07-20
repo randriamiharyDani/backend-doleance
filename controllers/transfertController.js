@@ -33,7 +33,7 @@ const getDoleancesATransferer = async (req, res) => {
       LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
       LEFT JOIN directions dir_actuelle ON d.id_direction = dir_actuelle.id_direction
       WHERE (d.id_direction IS NULL OR d.id_direction = 0)
-        AND (s.nom_statut NOT IN ('Clôturée', 'Résolue', 'Refusée') OR s.nom_statut IS NULL)
+        AND (s.nom_statut NOT IN ('Clôturée', 'Résolue', 'Refusée', 'Urgente') OR s.nom_statut IS NULL)
       ORDER BY p.niveau DESC, d.date_creation ASC
     `);
     

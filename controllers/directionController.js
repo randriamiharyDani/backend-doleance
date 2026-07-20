@@ -282,7 +282,8 @@ const getDoleancesByDirection = async (req, res) => {
         SUM(CASE WHEN s.nom_statut IN ('en_attente', 'en_cours') THEN 1 ELSE 0 END) as en_cours,
         SUM(CASE WHEN s.nom_statut IN ('traitee', 'resolue', 'cloturee') THEN 1 ELSE 0 END) as traitees,
         SUM(CASE WHEN s.nom_statut = 'transferee' THEN 1 ELSE 0 END) as transferees,
-        SUM(CASE WHEN s.nom_statut = 'rejetee' THEN 1 ELSE 0 END) as rejetees
+        SUM(CASE WHEN s.nom_statut = 'rejetee' THEN 1 ELSE 0 END) as rejetees,
+        SUM(CASE WHEN s.nom_statut = 'urgente' THEN 1 ELSE 0 END) as urgentes
        FROM doleances d
        LEFT JOIN statuts s ON d.id_statut = s.id_statut
        WHERE d.id_direction = ?`,
@@ -465,7 +466,8 @@ const getDirectionDetails = async (req, res) => {
           COUNT(DISTINCT d.id_doleance) as total_doleances,
           SUM(CASE WHEN s.nom_statut IN ('en_attente', 'en_cours') THEN 1 ELSE 0 END) as doleances_en_cours,
           SUM(CASE WHEN s.nom_statut IN ('traitee', 'resolue', 'cloturee') THEN 1 ELSE 0 END) as doleances_traitees,
-          SUM(CASE WHEN s.nom_statut = 'transferee' THEN 1 ELSE 0 END) as doleances_transferees
+          SUM(CASE WHEN s.nom_statut = 'transferee' THEN 1 ELSE 0 END) as doleances_transferees,
+          SUM(CASE WHEN s.nom_statut = 'urgente' THEN 1 ELSE 0 END) as doleances_urgentes
          FROM doleances d
          LEFT JOIN statuts s ON d.id_statut = s.id_statut
          WHERE d.id_direction = ?`,
@@ -477,6 +479,7 @@ const getDirectionDetails = async (req, res) => {
           doleances_en_cours: statsData[0].doleances_en_cours || 0,
           doleances_traitees: statsData[0].doleances_traitees || 0,
           doleances_transferees: statsData[0].doleances_transferees || 0,
+          doleances_urgentes: statsData[0].doleances_urgentes || 0,
           total_services: services.length,
           total_agents: agents.length
         };
