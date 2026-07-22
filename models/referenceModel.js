@@ -1,13 +1,19 @@
 const { pool } = require('../config/database');
 
 const getCategories = async () => {
-  const [rows] = await pool.execute('SELECT * FROM categories_doleance ORDER BY module, nom_categorie');
+  const [rows] = await pool.execute(
+    `SELECT c.*, d.nom_direction FROM categories_doleance c
+     LEFT JOIN directions d ON c.id_direction = d.id_direction
+     ORDER BY c.module, c.nom_categorie`
+  );
   return rows;
 };
 
 const getCategoriesByModule = async (module) => {
   const [rows] = await pool.execute(
-    'SELECT * FROM categories_doleance WHERE module = ? AND actif = 1 ORDER BY nom_categorie',
+    `SELECT c.*, d.nom_direction FROM categories_doleance c
+     LEFT JOIN directions d ON c.id_direction = d.id_direction
+     WHERE c.module = ? AND c.actif = 1 ORDER BY c.nom_categorie`,
     [module]
   );
   return rows;
@@ -137,7 +143,7 @@ const findStatutByNom = async (connection, nom_statut) => {
 
 
 const findByReference = async (reference) => {
-    const [rows] = await db.query(
+    const [rows] = await pool.execute(
         "SELECT * FROM doleances WHERE reference = ?",
         [reference]
     );

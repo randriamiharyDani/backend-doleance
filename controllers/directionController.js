@@ -270,7 +270,7 @@ const getDoleancesByDirection = async (req, res) => {
        LEFT JOIN citoyens c ON d.id_citoyen = c.id_citoyen
        LEFT JOIN categories_doleance cat ON d.id_categorie = cat.id_categorie
        LEFT JOIN statuts s ON d.id_statut = s.id_statut
-       LEFT JOIN utilisateurs u ON d.id_agent = u.id_utilisateur
+       LEFT JOIN utilisateurs u ON d.id_utilisateur_assignee = u.id_utilisateur
        WHERE d.id_direction = ?
        ORDER BY d.date_creation DESC`,
       [id]
@@ -279,11 +279,11 @@ const getDoleancesByDirection = async (req, res) => {
     const [stats] = await pool.execute(
       `SELECT 
         COUNT(*) as total,
-        SUM(CASE WHEN s.nom_statut IN ('en_attente', 'en_cours') THEN 1 ELSE 0 END) as en_cours,
-        SUM(CASE WHEN s.nom_statut IN ('traitee', 'resolue', 'cloturee') THEN 1 ELSE 0 END) as traitees,
+        SUM(CASE WHEN s.nom_statut IN ('En attente', 'Assignée', 'En traitement') THEN 1 ELSE 0 END) as en_cours,
+        SUM(CASE WHEN s.nom_statut IN ('Résolue', 'Clôturée') THEN 1 ELSE 0 END) as traitees,
         SUM(CASE WHEN s.nom_statut = 'transferee' THEN 1 ELSE 0 END) as transferees,
-        SUM(CASE WHEN s.nom_statut = 'rejetee' THEN 1 ELSE 0 END) as rejetees,
-        SUM(CASE WHEN s.nom_statut = 'urgente' THEN 1 ELSE 0 END) as urgentes
+        SUM(CASE WHEN s.nom_statut = 'Rejetée' THEN 1 ELSE 0 END) as rejetees,
+        SUM(CASE WHEN s.nom_statut = 'Urgente' THEN 1 ELSE 0 END) as urgentes
        FROM doleances d
        LEFT JOIN statuts s ON d.id_statut = s.id_statut
        WHERE d.id_direction = ?`,
@@ -311,14 +311,17 @@ const getDoleancesTransferees = async (req, res) => {
        c.nom as citoyen_nom, c.prenom as citoyen_prenom,
        COALESCE(cat.nom_categorie, 'Non catégorisé') as nom_categorie,
        s.nom_statut,
-       dir_orig.nom_direction as direction_origine
-       FROM doleances d
+       dir_src.nom_direction as direction_origine,
+       t.date_transfert,
+       t.motif as commentaire_transfert
+       FROM transferts t
+       INNER JOIN doleances d ON t.id_doleance = d.id_doleance
        LEFT JOIN citoyens c ON d.id_citoyen = c.id_citoyen
        LEFT JOIN categories_doleance cat ON d.id_categorie = cat.id_categorie
        LEFT JOIN statuts s ON d.id_statut = s.id_statut
-       LEFT JOIN directions dir_orig ON d.id_direction_origine = dir_orig.id_direction
-       WHERE d.id_direction_transfert = ?
-       ORDER BY d.date_transfert DESC, d.date_creation DESC`,
+       LEFT JOIN directions dir_src ON t.id_direction_source = dir_src.id_direction
+       WHERE t.id_direction_destination = ?
+       ORDER BY t.date_transfert DESC, d.date_creation DESC`,
       [id]
     );
 
@@ -342,40 +345,39 @@ const transfererDoleance = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
     }
 
-    if (!doleance[0].id_direction_origine && doleance[0].id_direction) {
-      await pool.execute(
-        'UPDATE doleances SET id_direction_origine = ? WHERE id_doleance = ?',
-        [doleance[0].id_direction, id]
-      );
-    }
+    const id_direction_source = doleance[0].id_direction;
 
     const [statutTransfere] = await pool.execute(
       "SELECT id_statut FROM statuts WHERE nom_statut = 'transferee'"
     );
-    const id_statut = statutTransfere[0]?.id_statut || 5;
+    const id_statut = statutTransfere[0]?.id_statut || 8;
 
     await pool.execute(
-      `UPDATE doleances 
-       SET id_direction_transfert = ?, 
-           id_agent = ?, 
-           id_statut = ?,
-           commentaire_transfert = ?,
-           date_transfert = NOW(),
-           id_direction = ?
-       WHERE id_doleance = ?`,
-      [id_direction_dest, id_agent || null, id_statut, commentaire || null, id_direction_dest, id]
+      `INSERT INTO transferts (id_doleance, id_direction_source, id_direction_destination, motif, id_utilisateur, date_transfert)
+       VALUES (?, ?, ?, ?, ?, NOW())`,
+      [id, id_direction_source || null, id_direction_dest, commentaire || null, userId]
     );
 
     await pool.execute(
-      `INSERT INTO logs_activites (id_utilisateur, action, table_name, id_enregistrement, details, date_action)
-       VALUES (?, 'transfert_doleance', 'doleances', ?, ?, NOW())`,
-      [userId, id, `Doléance transférée à la direction ID: ${id_direction_dest}`]
+      `UPDATE doleances 
+       SET id_direction = ?,
+           id_statut = ?,
+           id_utilisateur_assignee = ?,
+           date_mise_a_jour = NOW()
+       WHERE id_doleance = ?`,
+      [id_direction_dest, id_statut, id_agent || null, id]
+    );
+
+    await pool.execute(
+      `INSERT INTO logs_activites (id_utilisateur, action, entity_type, entity_id, date_action)
+       VALUES (?, 'transfert_doleance', 'doleances', ?, NOW())`,
+      [userId, id]
     );
 
     const [updatedDoleance] = await pool.execute(
       `SELECT d.*, dir.nom_direction as direction_destinataire
        FROM doleances d
-       LEFT JOIN directions dir ON d.id_direction_transfert = dir.id_direction
+       LEFT JOIN directions dir ON d.id_direction = dir.id_direction
        WHERE d.id_doleance = ?`,
       [id]
     );
@@ -435,14 +437,17 @@ const getDirectionDetails = async (req, res) => {
                 c.nom as citoyen_nom, c.prenom as citoyen_prenom,
                 COALESCE(cat.nom_categorie, 'Non catégorisé') as nom_categorie,
                 s.nom_statut,
-                dir_orig.nom_direction as direction_origine
-         FROM doleances d
+                dir_src.nom_direction as direction_origine,
+                t.date_transfert,
+                t.motif as commentaire_transfert
+         FROM transferts t
+         INNER JOIN doleances d ON t.id_doleance = d.id_doleance
          LEFT JOIN citoyens c ON d.id_citoyen = c.id_citoyen
          LEFT JOIN categories_doleance cat ON d.id_categorie = cat.id_categorie
          LEFT JOIN statuts s ON d.id_statut = s.id_statut
-         LEFT JOIN directions dir_orig ON d.id_direction_origine = dir_orig.id_direction
-         WHERE d.id_direction_transfert = ?
-         ORDER BY d.date_transfert DESC
+         LEFT JOIN directions dir_src ON t.id_direction_source = dir_src.id_direction
+         WHERE t.id_direction_destination = ?
+         ORDER BY t.date_transfert DESC
          LIMIT 50`,
         [id]
       );
@@ -464,10 +469,10 @@ const getDirectionDetails = async (req, res) => {
       const [statsData] = await pool.execute(
         `SELECT 
           COUNT(DISTINCT d.id_doleance) as total_doleances,
-          SUM(CASE WHEN s.nom_statut IN ('en_attente', 'en_cours') THEN 1 ELSE 0 END) as doleances_en_cours,
-          SUM(CASE WHEN s.nom_statut IN ('traitee', 'resolue', 'cloturee') THEN 1 ELSE 0 END) as doleances_traitees,
+          SUM(CASE WHEN s.nom_statut IN ('En attente', 'Assignée', 'En traitement') THEN 1 ELSE 0 END) as doleances_en_cours,
+          SUM(CASE WHEN s.nom_statut IN ('Résolue', 'Clôturée') THEN 1 ELSE 0 END) as doleances_traitees,
           SUM(CASE WHEN s.nom_statut = 'transferee' THEN 1 ELSE 0 END) as doleances_transferees,
-          SUM(CASE WHEN s.nom_statut = 'urgente' THEN 1 ELSE 0 END) as doleances_urgentes
+          SUM(CASE WHEN s.nom_statut = 'Urgente' THEN 1 ELSE 0 END) as doleances_urgentes
          FROM doleances d
          LEFT JOIN statuts s ON d.id_statut = s.id_statut
          WHERE d.id_direction = ?`,

@@ -55,38 +55,39 @@ const insertInitialData = async () => {
     `);
     
     // Insertion des catégories
-    await promisePool.execute(`
-      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif) VALUES
-      (1, 'Voirie', 'Lalana', 'Problèmes de routes, trottoirs et signalisation', 'Direction de la Voirie', '#2196F3', 'road', 'CUA', 1),
-      (2, 'Éclairage public', 'Jiro', "Pannes d'éclairage et lampadaires", 'Direction de la Voirie', '#FFC107', 'lightbulb', 'CUA', 1),
-      (3, 'Salubrité', 'Hadioana', 'Propreté, déchets et nuisance', "Direction de l'Environnement", '#4CAF50', 'trash', 'CUA', 1),
-      (4, 'Espaces verts', 'Faritra maitso', 'Parcs, jardins et espaces naturels', "Direction de l'Environnement", '#8BC34A', 'tree', 'CUA', 1),
-      (5, 'Transport', 'Fifindrana', 'Problèmes de transport en commun', 'Direction des Transports', '#9C27B0', 'bus', 'CUA', 1),
-      (6, 'Sécurité', 'Fiarovana', 'Problèmes de sécurité publique', 'Direction de la Sécurité', '#F44336', 'security', 'CUA', 1),
-      (7, 'Urbanisme', 'Fandaminana ny tanàna', 'Permis de construire et aménagement', "Direction de l'Urbanisme", '#795548', 'building', 'CUA', 1),
-      (8, 'Social', 'Sosialy', 'Aides sociales et services publics', 'Direction des Affaires Sociales', '#E91E63', 'people', 'CUA', 1),
-      (9, 'Incendie', 'Afo', 'Incendies domestiques et industriels', 'Service Incendie', '#EF4444', 'fire', 'Sapeurs-Pompiers', 1),
-      (10, 'Accident de circulation', 'Loza', 'Accidents de la route et secours', 'Service Secours', '#F97316', 'accident', 'Sapeurs-Pompiers', 1),
-      (11, 'Secours à personne', 'Fanavotana', 'Personnes en danger ou blessées', 'Service Secours', '#3B82F6', 'medical', 'Sapeurs-Pompiers', 1),
-      (12, 'Inondation', 'Tondra-drano', 'Zones inondées et assistance', 'Service Protection Civile', '#06B6D4', 'flood', 'Sapeurs-Pompiers', 1),
-      (13, 'Catastrophe naturelle', 'Loza voajanahary', 'Tremblements de terre, cyclones', 'Service Protection Civile', '#8B5CF6', 'disaster', 'Sapeurs-Pompiers', 1),
-      (14, 'Animal dangereux', 'Biby mampidi-doza', 'Animaux errants ou dangereux', 'Service Animalier', '#84CC16', 'animal', 'Sapeurs-Pompiers', 1),
-      (15, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Service Risques', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1),
-      (16, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'other', 'CUA', 1),
-      (17, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'other', 'Sapeurs-Pompiers', 1)
-    `);
+    // await promisePool.execute(`
+    //   INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif) VALUES
+    //   (1, 'Voirie', 'Lalana', 'Problèmes de routes, trottoirs et signalisation', 'Direction de la Voirie', '#2196F3', 'road', 'CUA', 1),
+    //   (2, 'Éclairage public', 'Jiro', "Pannes d'éclairage et lampadaires", 'Direction de la Voirie', '#FFC107', 'lightbulb', 'CUA', 1),
+    //   (3, 'Salubrité', 'Hadioana', 'Propreté, déchets et nuisance', "Direction de l'Environnement", '#4CAF50', 'trash', 'CUA', 1),
+    //   (4, 'Espaces verts', 'Faritra maitso', 'Parcs, jardins et espaces naturels', "Direction de l'Environnement", '#8BC34A', 'tree', 'CUA', 1),
+    //   (5, 'Transport', 'Fifindrana', 'Problèmes de transport en commun', 'Direction des Transports', '#9C27B0', 'bus', 'CUA', 1),
+    //   (6, 'Sécurité', 'Fiarovana', 'Problèmes de sécurité publique', 'Direction de la Sécurité', '#F44336', 'security', 'CUA', 1),
+    //   (7, 'Urbanisme', 'Fandaminana ny tanàna', 'Permis de construire et aménagement', "Direction de l'Urbanisme", '#795548', 'building', 'CUA', 1),
+    //   (8, 'Social', 'Sosialy', 'Aides sociales et services publics', 'Direction des Affaires Sociales', '#E91E63', 'people', 'CUA', 1),
+    //   (9, 'Incendie', 'Afo', 'Incendies domestiques et industriels', 'Chef de corps des Sapeurs Pompiers', '#EF4444', 'fire', 'Sapeurs-Pompiers', 1),
+    //   (10, 'Accident de circulation', 'Loza', 'Accidents de la route et secours', 'Chef de corps des Sapeurs Pompiers', '#F97316', 'accident', 'Sapeurs-Pompiers', 1),
+    //   (11, 'Secours à personne', 'Fanavotana', 'Personnes en danger ou blessées', 'Chef de corps des Sapeurs Pompiers', '#3B82F6', 'medical', 'Sapeurs-Pompiers', 1),
+    //   (12, 'Inondation', 'Tondra-drano', 'Zones inondées et assistance', 'Chef de corps des Sapeurs Pompiers', '#06B6D4', 'flood', 'Sapeurs-Pompiers', 1),
+    //   (13, 'Catastrophe naturelle', 'Loza voajanahary', 'Tremblements de terre, cyclones', 'Chef de corps des Sapeurs Pompiers', '#8B5CF6', 'disaster', 'Sapeurs-Pompiers', 1),
+    //   (14, 'Animal dangereux', 'Biby mampidi-doza', 'Animaux errants ou dangereux', 'Chef de corps des Sapeurs Pompiers', '#84CC16', 'animal', 'Sapeurs-Pompiers', 1),
+    //   (15, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Chef de corps des Sapeurs Pompiers', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1),
+    //   (16, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'other', 'CUA', 1),
+    //   (17, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', 'Chef de corps des Sapeurs Pompiers', '#6B7280', 'other', 'Sapeurs-Pompiers', 1)
+    // `);
     
     // Insertion des directions
-    await promisePool.execute(`
-      INSERT IGNORE INTO directions (id_direction, nom_direction, description) VALUES
-      (1, 'Direction de la Voirie', 'Gestion des routes et infrastructures routières'),
-      (2, "Direction de l'Environnement", 'Gestion des espaces verts et de la propreté'),
-      (3, 'Direction de la Sécurité', 'Gestion de la sécurité publique'),
-      (4, 'Direction des Transports', 'Gestion des transports urbains'),
-      (5, "Direction de l'Urbanisme", 'Gestion des permis et de l aménagement'),
-      (6, 'Direction des Affaires Sociales', 'Gestion des aides sociales'),
-      (7, 'Direction des Services Techniques', 'Gestion technique de la ville')
-    `);
+    // await promisePool.execute(`
+    //   INSERT IGNORE INTO directions (id_direction, nom_direction, description) VALUES
+    //   (1, 'Direction de la Voirie', 'Gestion des routes et infrastructures routières'),
+    //   (2, "Direction de l'Environnement", 'Gestion des espaces verts et de la propreté'),
+    //   (3, 'Direction de la Sécurité', 'Gestion de la sécurité publique'),
+    //   (4, 'Direction des Transports', 'Gestion des transports urbains'),
+    //   (5, "Direction de l'Urbanisme", 'Gestion des permis et de l aménagement'),
+    //   (6, 'Direction des Affaires Sociales', 'Gestion des aides sociales'),
+    //   (7, 'Direction des Services Techniques', 'Gestion technique de la ville'),
+    //   (35, 'Chef de corps des Sapeurs Pompiers', 'Incendies, secours et protection civile')
+    // `);
 
     // Mise à jour des emails et infos des directions
     await promisePool.execute(`
@@ -109,6 +110,9 @@ const insertInitialData = async () => {
     `).catch(() => {});
     await promisePool.execute(`
       UPDATE directions SET email = 'technique@mairie-tnr.mg', telephone = '+261 34 00 007', categorie = 'Technique', responsable = 'Directeur Services Techniques' WHERE id_direction = 7
+    `).catch(() => {});
+    await promisePool.execute(`
+      UPDATE directions SET actif = 1, email = 'sapeurs-pompiers@mairie-tnr.mg', telephone = '+261 34 18', categorie = 'Sécurité', responsable = 'Chef de corps des Sapeurs Pompiers' WHERE id_direction = 35
     `).catch(() => {});
     
     // Insertion des arrondissements

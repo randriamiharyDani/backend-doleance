@@ -420,6 +420,7 @@ const getDoleanceByReference = async (req, res) => {
         priorite: doleance.nom_priorite,
         niveau: doleance.niveau,
         categorie: doleance.nom_categorie || 'Non catégorisée',
+        nom_direction: doleance.nom_direction || 'Non assignée',
         reponses: reponses || [],
         historique: historique || [],
         pieces_jointes: piecesWithUrl || []
@@ -612,10 +613,16 @@ const createDoleance = async (req, res) => {
         citoyenNom: `${nom_citoyen} ${prenom_citoyen}`
       });
 
+      let nomDirection = null;
+      if (defaultDirection) {
+        const dir = await referenceModel.findDirectionById(connection, defaultDirection);
+        nomDirection = dir[0]?.nom_direction || null;
+      }
+
       res.status(201).json({
         success: true,
         message: 'Doléance créée avec succès',
-        data: { id: id_doleance, id_doleance, reference, identifiant_citoyen: finalCitizenId }
+        data: { id: id_doleance, id_doleance, reference, identifiant_citoyen: finalCitizenId, nom_direction: nomDirection }
       });
     } catch (error) {
       await connection.rollback();
@@ -826,13 +833,13 @@ const getStatsOverview = async (req, res) => {
 
     const [total] = await pool.execute(`SELECT COUNT(*) as total FROM doleances WHERE (supprime IS NULL OR supprime = 0)${directionFilter}`, params);
     const [enAttente] = await pool.execute(
-      `SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
+      `SELECT COUNT(*) as en_attente FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En attente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [enCours] = await pool.execute(
-      `SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_cours') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
+      `SELECT COUNT(*) as en_cours FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En traitement') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [resolues] = await pool.execute(
-      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'resolue') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
+      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'Résolue') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [urgentes] = await pool.execute(
       `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'Urgente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params

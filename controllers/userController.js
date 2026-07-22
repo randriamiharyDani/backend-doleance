@@ -185,43 +185,28 @@ const deleteUser = async (req, res) => {
     }
 
     try {
-      await pool.execute('DELETE FROM commentaires WHERE id_utilisateur = ?', [id]);
-      console.log('  - Commentaires supprimés');
+      await pool.execute('DELETE FROM commentaires_internes WHERE id_utilisateur = ?', [id]);
+      console.log('  - Commentaires internes supprimés');
     } catch (err) {
-      try {
-        await pool.execute('DELETE FROM commentaires WHERE user_id = ?', [id]);
-        console.log('  - Commentaires supprimés (user_id)');
-      } catch (err2) {
-        console.log('  - Commentaires: ignoré');
-      }
+      console.log('  - Commentaires internes: ignoré');
     }
 
     try {
       await pool.execute('DELETE FROM transferts WHERE id_utilisateur = ?', [id]);
       console.log('  - Transferts supprimés');
     } catch (err) {
-      try {
-        await pool.execute('DELETE FROM transferts WHERE id_agent = ?', [id]);
-        console.log('  - Transferts supprimés (id_agent)');
-      } catch (err2) {
-        try {
-          await pool.execute('DELETE FROM transferts WHERE id_destinataire = ?', [id]);
-          console.log('  - Transferts supprimés (id_destinataire)');
-        } catch (err3) {
-          console.log('  - Transferts: ignoré');
-        }
-      }
+      console.log('  - Transferts: ignoré');
     }
 
     try {
-      await pool.execute('UPDATE doleances SET id_agent = NULL WHERE id_agent = ?', [id]);
-      console.log('  - Doléances (agent) mises à jour');
+      await pool.execute('UPDATE doleances SET id_utilisateur_assignee = NULL WHERE id_utilisateur_assignee = ?', [id]);
+      console.log('  - Doléances (assignee) mises à jour');
     } catch (err) {
-      console.log('  - Mise à jour doléances agent: ignoré');
+      console.log('  - Mise à jour doléances assignee: ignoré');
     }
 
     try {
-      await pool.execute('UPDATE doleances SET id_utilisateur = NULL WHERE id_utilisateur = ?', [id]);
+      await pool.execute('UPDATE doleances SET id_citoyen = NULL WHERE id_citoyen = ?', [id]);
       console.log('  - Doléances (citoyen) mises à jour');
     } catch (err) {
       console.log('  - Mise à jour doléances citoyen: ignoré');

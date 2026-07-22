@@ -9,10 +9,6 @@ const generateReference = () => {
   return `DOL-${year}${month}${day}-${random}`;
 };
 
-const directionParCategorie = {
-  1: 1, 2: 2, 3: 2, 4: 2, 5: 4, 6: 3, 7: 5, 8: 6
-};
-
 const findById = async (id) => {
   const [rows] = await pool.execute(
     `SELECT d.*, s.nom_statut, s.couleur as statut_couleur,
@@ -59,12 +55,14 @@ const findByIdIncludeTrashed = async (id) => {
 
 const findByReference = async (reference) => {
   const [rows] = await pool.execute(
-    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, q.nom_quartier
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, q.nom_quartier,
+            dir.nom_direction
      FROM doleances d
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
+     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
      WHERE d.reference = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
     [reference]
   );
@@ -284,7 +282,7 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
     LEFT JOIN statuts s ON d.id_statut = s.id_statut
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-    WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
+    WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En attente')
     AND (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
@@ -298,7 +296,7 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
 
   const [countResult] = await pool.execute(
     `SELECT COUNT(*) as total FROM doleances d 
-     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'en_attente')
+     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En attente')
      AND (d.supprime IS NULL OR d.supprime = 0)`
   );
   const total = countResult[0]?.total || 0;
@@ -507,7 +505,11 @@ const searchSuggestions = async (q) => {
 };
 
 const getDefaultDirection = async (id_categorie) => {
-  return directionParCategorie[Number(id_categorie)] ?? null;
+  const [rows] = await pool.execute(
+    'SELECT id_direction FROM categories_doleance WHERE id_categorie = ? AND id_direction IS NOT NULL',
+    [Number(id_categorie)]
+  );
+  return rows[0]?.id_direction ?? null;
 };
 
 const listAssignedLocations = async () => {
