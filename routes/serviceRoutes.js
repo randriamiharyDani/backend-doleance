@@ -29,7 +29,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', authorize('administrateur_systeme', 'administrateur'), async (req, res) => {
+router.post('/', authorize('administrateur_systeme', 'administrateur', 'agent_central'), async (req, res) => {
   try {
     const { id_direction, nom_service, description, email, telephone, responsable } = req.body;
     if (!id_direction || !nom_service) {
@@ -43,7 +43,7 @@ router.post('/', authorize('administrateur_systeme', 'administrateur'), async (r
   }
 });
 
-router.put('/:id', authorize('administrateur_systeme', 'administrateur'), async (req, res) => {
+router.put('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), async (req, res) => {
   try {
     const { id } = req.params;
     const { id_direction, nom_service, description, email, telephone, responsable, actif } = req.body;
@@ -57,7 +57,7 @@ router.put('/:id', authorize('administrateur_systeme', 'administrateur'), async 
   }
 });
 
-router.delete('/:id', authorize('administrateur_systeme', 'administrateur'), async (req, res) => {
+router.delete('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), async (req, res) => {
   try {
     await serviceModel.deleteById(req.params.id);
     res.json({ success: true, message: 'Service supprimé avec succès' });

@@ -109,7 +109,7 @@ const authorize = (...roles) => {
     }
     
     // Vérifier si l'utilisateur est administrateur (accès total)
-    const adminRoles = ['administrateur_systeme', 'administrateur'];
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
     if (adminRoles.includes(userRole)) {
       return next();
     }
@@ -133,7 +133,7 @@ const authorizeSelf = (paramIdName = 'id') => {
     const userId = req.user.id_utilisateur;
     
     // Admin peut tout voir
-    const adminRoles = ['administrateur_systeme', 'administrateur'];
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
     if (adminRoles.includes(userRole)) {
       return next();
     }
@@ -162,13 +162,8 @@ const authorizeDirection = () => {
     const userId = req.user.id_utilisateur;
     
     // Admin peut tout voir
-    const adminRoles = ['administrateur_systeme', 'administrateur'];
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
     if (adminRoles.includes(userRole)) {
-      return next();
-    }
-    
-    // Agent central peut tout voir
-    if (userRole === 'agent_central') {
       return next();
     }
     

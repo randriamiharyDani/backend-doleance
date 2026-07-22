@@ -30,13 +30,13 @@ router.get('/evolution-temporelle', getEvolutionTemporelle);
 router.get('/temps-traitement', getTempsTraitementMoyen);
 
 // ========== ROUTES ADMINISTRATION (admin système et administrateur uniquement) ==========
-router.get('/by-categorie', authorize('administrateur_systeme', 'administrateur'), getStatsByCategorie);
-router.get('/by-direction', authorize('administrateur_systeme', 'administrateur'), getStatsByDirection);
-router.get('/by-priorite', authorize('administrateur_systeme', 'administrateur'), getStatsByPriorite);
-router.get('/by-quartier', authorize('administrateur_systeme', 'administrateur'), getStatsByQuartier);
+router.get('/by-categorie', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByCategorie);
+router.get('/directions', getStatsByDirection);
+router.get('/by-priorite', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByPriorite);
+router.get('/by-quartier', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByQuartier);
 
-// ========== ROUTES PERFORMANCE (admin système, admin et directeur) ==========
-router.get('/performance-agents', authorize('administrateur_systeme', 'administrateur', 'directeur'), getPerformanceAgents);
+// ========== ROUTES PERFORMANCE (tous les utilisateurs authentifiés) ==========
+router.get('/performance-agents', getPerformanceAgents);
 
 // ========== ROUTES D'EXPORT (admin système et administrateur uniquement) ==========
 router.post('/export/:format', authorize('administrateur_systeme', 'administrateur'), exportStats);

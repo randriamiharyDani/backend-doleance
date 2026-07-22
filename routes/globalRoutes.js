@@ -23,12 +23,7 @@ const {
 // ==================== ROUTES PUBLIQUES ====================
 router.get('/doleances/public', getDoleances);
 router.get('/doleances/public/:id', getDoleanceById);
-
-
-// router.get("/public/:reference", getDoleanceByReference);
 router.get("/public/:reference", getDoleanceByReference);
-
-
 router.post('/doleances', createDoleance);
 router.get('/categories', getCategories);
 router.get('/priorites', getPriorites);
@@ -41,31 +36,31 @@ router.get('/statuts', getStatuts);
 router.use(protect);
 
 // Utilisateurs
-router.get('/utilisateurs', authorize('administrateur_systeme', 'administrateur'), getUtilisateurs);
-router.get('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur'), getUtilisateurById);
-router.post('/utilisateurs', authorize('administrateur_systeme', 'administrateur'), createUtilisateur);
-router.put('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur'), updateUtilisateur);
-router.delete('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur'), deleteUtilisateur);
+router.get('/utilisateurs', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUtilisateurs);
+router.get('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUtilisateurById);
+router.post('/utilisateurs', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createUtilisateur);
+router.put('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateUtilisateur);
+router.delete('/utilisateurs/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteUtilisateur);
 
 // Rôles
-router.get('/roles', authorize('administrateur_systeme'), getRoles);
-router.get('/roles/:id', authorize('administrateur_systeme'), getRoleById);
-router.post('/roles', authorize('administrateur_systeme'), createRole);
-router.put('/roles/:id', authorize('administrateur_systeme'), updateRole);
-router.delete('/roles/:id', authorize('administrateur_systeme'), deleteRole);
+router.get('/roles', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRoles);
+router.get('/roles/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRoleById);
+router.post('/roles', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createRole);
+router.put('/roles/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateRole);
+router.delete('/roles/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteRole);
 
 // Directions
 router.get('/directions', getDirections);
 router.get('/directions/:id', getDirectionById);
-router.post('/directions', authorize('administrateur_systeme'), createDirection);
-router.put('/directions/:id', authorize('administrateur_systeme'), updateDirection);
-router.delete('/directions/:id', authorize('administrateur_systeme'), deleteDirection);
+router.post('/directions', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createDirection);
+router.put('/directions/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateDirection);
+router.delete('/directions/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteDirection);
 
 // Doléances
 router.get('/doleances', getDoleances);
 router.get('/doleances/:id', getDoleanceById);
 router.put('/doleances/:id', updateDoleance);
-router.delete('/doleances/:id', authorize('administrateur_systeme', 'administrateur'), deleteDoleance);
+router.delete('/doleances/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteDoleance);
 
 // Citoyens
 router.get('/citoyens', getCitoyens);
@@ -73,10 +68,10 @@ router.get('/citoyens/:id', getCitoyenById);
 router.post('/citoyens', createCitoyen);
 
 // Catégories
-router.get('/categories/:id', authorize('administrateur_systeme'), getCategorieById);
-router.post('/categories', authorize('administrateur_systeme'), createCategorie);
-router.put('/categories/:id', authorize('administrateur_systeme'), updateCategorie);
-router.delete('/categories/:id', authorize('administrateur_systeme'), deleteCategorie);
+router.get('/categories/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getCategorieById);
+router.post('/categories', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createCategorie);
+router.put('/categories/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateCategorie);
+router.delete('/categories/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteCategorie);
 
 // Réponses
 router.get('/reponses', getReponses);

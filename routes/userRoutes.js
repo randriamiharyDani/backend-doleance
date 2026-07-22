@@ -27,23 +27,17 @@ router.use(protect);
 router.get('/profile', getUserById);
 router.put('/profile', updateUser);
 
-// ========== ROUTES POUR AGENT CENTRAL ==========
-// Route pour récupérer les agents (accessible à agent_central et administrateur_systeme)
-router.get('/agents', authorize('agent_central', 'administrateur_systeme', 'administrateur'), getAgentsDisponibles);
-
-// ========== ROUTES ADMINISTRATION (Super Admin uniquement) ==========
-// Seul l'administrateur_systeme peut gérer les utilisateurs
-
 // Gestion des utilisateurs
-router.get('/', authorize('administrateur_systeme'), getUsers);
-router.get('/stats', authorize('administrateur_systeme'), getUserStats);
-router.get('/agents/disponibles', authorize('administrateur_systeme'), getAgentsDisponibles);
-router.get('/:id', authorize('administrateur_systeme'), getUserById);
-router.get('/:id/logs', authorize('administrateur_systeme'), getActivityLogs);
-router.post('/', authorize('administrateur_systeme'), createUser);
-router.put('/:id', authorize('administrateur_systeme'), updateUser);
-router.delete('/:id', authorize('administrateur_systeme'), deleteUser);
-router.patch('/:id/toggle', authorize('administrateur_systeme'), toggleActif);
-router.post('/:id/reset-password', authorize('administrateur_systeme'), resetPassword);
+router.get('/', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUsers);
+router.get('/stats', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUserStats);
+router.get('/agents', authorize('agent_central', 'administrateur_systeme', 'administrateur'), getAgentsDisponibles);
+router.get('/agents/disponibles', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getAgentsDisponibles);
+router.get('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUserById);
+router.get('/:id/logs', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getActivityLogs);
+router.post('/', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createUser);
+router.put('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateUser);
+router.delete('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteUser);
+router.patch('/:id/toggle', authorize('administrateur_systeme', 'administrateur', 'agent_central'), toggleActif);
+router.post('/:id/reset-password', authorize('administrateur_systeme', 'administrateur', 'agent_central'), resetPassword);
 
 module.exports = router;

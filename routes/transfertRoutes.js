@@ -15,13 +15,13 @@ const {
 router.use(protect);
 
 // Routes pour l'agent central
-router.get('/a-transférer', authorize('agent_central', 'administrateur_systeme'), getDoleancesATransferer);
-router.get('/historique', authorize('agent_central', 'administrateur_systeme', 'directeur'), getHistoriqueTransferts);
-router.get('/stats', authorize('agent_central', 'administrateur_systeme'), getStatsTransferts);
+router.get('/a-transférer', authorize('agent_central', 'administrateur_systeme', 'administrateur'), getDoleancesATransferer);
+router.get('/historique', authorize('agent_central', 'administrateur_systeme', 'administrateur', 'directeur'), getHistoriqueTransferts);
+router.get('/stats', authorize('agent_central', 'administrateur_systeme', 'administrateur'), getStatsTransferts);
 
 // Actions de transfert
-router.post('/:id/transferer-direction', authorize('agent_central', 'administrateur_systeme'), transfererVersDirection);
-router.post('/:id/transferer-service', authorize('agent_central', 'administrateur_systeme'), transfererVersService);
-router.post('/:id/annuler', authorize('agent_central', 'administrateur_systeme'), annulerTransfert);
+router.post('/:id/transferer-direction', authorize('agent_central', 'administrateur_systeme', 'administrateur'), transfererVersDirection);
+router.post('/:id/transferer-service', authorize('agent_central', 'administrateur_systeme', 'administrateur'), transfererVersService);
+router.post('/:id/annuler', authorize('agent_central', 'administrateur_systeme', 'administrateur'), annulerTransfert);
 
 module.exports = router;

@@ -203,10 +203,7 @@ const getStatsByCategorie = async (req, res) => {
     const [stats] = await pool.execute(
       `SELECT c.id_categorie, c.nom_categorie, c.couleur,
               COUNT(d.id_doleance) as count,
-              CASE WHEN ? > 0 THEN ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) ELSE 0 END as percentage,
-              ROUND(AVG(CASE WHEN d.date_resolution IS NOT NULL
-                THEN TIMESTAMPDIFF(HOUR, d.date_creation, d.date_resolution)
-                ELSE NULL END), 1) as delai_moyen_heures
+              CASE WHEN ? > 0 THEN ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) ELSE 0 END as percentage
        FROM categories_doleance c
        LEFT JOIN doleances d ON c.id_categorie = d.id_categorie ${dateCondition} ${directionFilter}
        WHERE c.actif = 1
@@ -495,11 +492,10 @@ const getPerformanceAgents = async (req, res) => {
     const [stats] = await pool.execute(
       `SELECT u.id_utilisateur, u.nom, u.prenom,
               COUNT(d.id_doleance) as doleances_traitees,
-              COUNT(CASE WHEN d.id_statut IN (5,6) THEN 1 END) as doleances_resolues,
-              ROUND(AVG(CASE WHEN d.id_statut IN (5,6) THEN TIMESTAMPDIFF(HOUR, d.date_creation, d.date_mise_a_jour) END)) as temps_moyen_heures
+              COUNT(CASE WHEN d.id_statut IN (5,6) THEN 1 END) as doleances_resolues
        FROM utilisateurs u
         JOIN doleances d ON u.id_utilisateur = d.id_utilisateur_assignee
-       WHERE u.id_role IN (2,3) ${dateCondition} ${directionFilter}
+       WHERE u.actif = 1 ${dateCondition} ${directionFilter}
        GROUP BY u.id_utilisateur
        HAVING doleances_traitees > 0
        ORDER BY doleances_resolues DESC

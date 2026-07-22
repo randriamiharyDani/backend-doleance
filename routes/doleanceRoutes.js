@@ -157,7 +157,7 @@ router.post('/:id/reponses', authorize(
 ), authorizeDoleance(), addReponse);
 
 // Supprimer une doléance (admin et agent central uniquement)
-router.delete('/:id', authorize('agent_central', 'administrateur_systeme'), deleteDoleance);
+router.delete('/:id', authorize('agent_central', 'administrateur_systeme', 'administrateur'), deleteDoleance);
 
 // ========== PIÈCES JOINTES ==========
 // Upload de pièces jointes
@@ -191,7 +191,7 @@ router.get('/pieces/:id/download', authorize(
 ), downloadPieceJointe);
 
 // Supprimer une pièce jointe (admin et agent central uniquement)
-router.delete('/pieces/:id', authorize('agent_central', 'administrateur_systeme'), deletePieceJointe);
+router.delete('/pieces/:id', authorize('agent_central', 'administrateur_systeme', 'administrateur'), deletePieceJointe);
 
 // ========== STATISTIQUES ==========
 router.get('/stats/overview', authorize(

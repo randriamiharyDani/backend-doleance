@@ -8,7 +8,7 @@ const {
   createDirection,
   updateDirection,
   deleteDirection,
-  getDirectionDetails,  // AJOUTÉ
+  getDirectionDetails,
   // Services
   getServices,
   getServicesByDirection,
@@ -16,9 +16,9 @@ const {
   updateService,
   deleteService,
   // Doléances
-  getDoleancesByDirection,  // AJOUTÉ
-  getDoleancesTransferees,   // AJOUTÉ
-  transfererDoleance,         // AJOUTÉ
+  getDoleancesByDirection,
+  getDoleancesTransferees,
+  transfererDoleance,
   // Stats
   getDirectionsStats,
   getUsersWithoutDirection
@@ -28,35 +28,35 @@ const {
 router.use(protect);
 
 // ========== STATISTIQUES ==========
-router.get('/stats', authorize('administrateur_systeme', 'administrateur'), getDirectionsStats);
-router.get('/users/without-direction', authorize('administrateur_systeme', 'administrateur'), getUsersWithoutDirection);
+router.get('/stats', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getDirectionsStats);
+router.get('/users/without-direction', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getUsersWithoutDirection);
 
 // ========== DÉTAILS COMPLETS D'UNE DIRECTION ==========
-router.get('/:id/details', authorize('administrateur_systeme', 'administrateur', 'directeur'), getDirectionDetails);
+router.get('/:id/details', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getDirectionDetails);
 
 // ========== DOLÉANCES PAR DIRECTION ==========
-router.get('/:id/doleances', authorize('administrateur_systeme', 'administrateur', 'directeur'), getDoleancesByDirection);
-router.get('/:id/doleances-transferees', authorize('administrateur_systeme', 'administrateur', 'directeur'), getDoleancesTransferees);
+router.get('/:id/doleances', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getDoleancesByDirection);
+router.get('/:id/doleances-transferees', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getDoleancesTransferees);
 router.post('/doleances/:id/transfert', authorize('administrateur_systeme', 'administrateur', 'directeur', 'agent_central'), transfererDoleance);
 
 // ========== ROUTES DIRECTIONS ==========
 router.route('/')
   .get(getDirections)
-  .post(authorize('administrateur_systeme', 'administrateur'), createDirection);
+  .post(authorize('administrateur_systeme', 'administrateur', 'agent_central'), createDirection);
 
 router.route('/:id')
   .get(getDirectionById)
-  .put(authorize('administrateur_systeme', 'administrateur'), updateDirection)
-  .delete(authorize('administrateur_systeme', 'administrateur'), deleteDirection);
+  .put(authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateDirection)
+  .delete(authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteDirection);
 
 // ========== ROUTES SERVICES ==========
 router.get('/services', getServices);
-router.get('/:directionId/services', authorize('administrateur_systeme', 'administrateur', 'directeur'), getServicesByDirection);
+router.get('/:directionId/services', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getServicesByDirection);
 
 router.route('/services/:id')
-  .put(authorize('administrateur_systeme', 'administrateur'), updateService)
-  .delete(authorize('administrateur_systeme', 'administrateur'), deleteService);
+  .put(authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateService)
+  .delete(authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteService);
 
-router.post('/services', authorize('administrateur_systeme', 'administrateur'), createService);
+router.post('/services', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createService);
 
 module.exports = router;
