@@ -71,7 +71,9 @@ const insertInitialData = async () => {
       (12, 'Inondation', 'Tondra-drano', 'Zones inondées et assistance', 'Service Protection Civile', '#06B6D4', 'flood', 'Sapeurs-Pompiers', 1),
       (13, 'Catastrophe naturelle', 'Loza voajanahary', 'Tremblements de terre, cyclones', 'Service Protection Civile', '#8B5CF6', 'disaster', 'Sapeurs-Pompiers', 1),
       (14, 'Animal dangereux', 'Biby mampidi-doza', 'Animaux errants ou dangereux', 'Service Animalier', '#84CC16', 'animal', 'Sapeurs-Pompiers', 1),
-      (15, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Service Risques', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1)
+      (15, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Service Risques', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1),
+      (16, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'other', 'CUA', 1),
+      (17, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'other', 'Sapeurs-Pompiers', 1)
     `);
     
     // Insertion des directions

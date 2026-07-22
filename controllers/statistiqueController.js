@@ -203,7 +203,10 @@ const getStatsByCategorie = async (req, res) => {
     const [stats] = await pool.execute(
       `SELECT c.id_categorie, c.nom_categorie, c.couleur,
               COUNT(d.id_doleance) as count,
-              CASE WHEN ? > 0 THEN ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) ELSE 0 END as percentage
+              CASE WHEN ? > 0 THEN ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) ELSE 0 END as percentage,
+              ROUND(AVG(CASE WHEN d.date_resolution IS NOT NULL
+                THEN TIMESTAMPDIFF(HOUR, d.date_creation, d.date_resolution)
+                ELSE NULL END), 1) as delai_moyen_heures
        FROM categories_doleance c
        LEFT JOIN doleances d ON c.id_categorie = d.id_categorie ${dateCondition} ${directionFilter}
        WHERE c.actif = 1

@@ -42,6 +42,7 @@ const updateCategorie = async (id, data) => {
 };
 
 const deleteCategorie = async (id) => {
+  await pool.execute('UPDATE doleances SET id_categorie = NULL WHERE id_categorie = ?', [id]);
   const [result] = await pool.execute('DELETE FROM categories_doleance WHERE id_categorie = ?', [id]);
   return result.affectedRows;
 };

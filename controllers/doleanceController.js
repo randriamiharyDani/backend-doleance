@@ -580,10 +580,12 @@ const createDoleance = async (req, res) => {
       const defaultPriorite = isSapeursPompiers ? 4 : 2;
       let defaultDirection = await doleanceModel.getDefaultDirection(id_categorie);
 
-      const directionsExist = await referenceModel.findDirectionById(connection, defaultDirection);
-      if (directionsExist.length === 0) {
-        const firstDirection = await referenceModel.findFirstDirection(connection);
-        defaultDirection = firstDirection[0]?.id_direction || 1;
+      if (defaultDirection !== null) {
+        const directionsExist = await referenceModel.findDirectionById(connection, defaultDirection);
+        if (directionsExist.length === 0) {
+          const firstDirection = await referenceModel.findFirstDirection(connection);
+          defaultDirection = firstDirection[0]?.id_direction || 1;
+        }
       }
 
       const quartierValue = id_quartier ? Number(id_quartier) : null;

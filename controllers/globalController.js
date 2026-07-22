@@ -353,9 +353,6 @@ const deleteCategorie = async (req, res) => {
     }
     res.json({ success: true, message: 'Catégorie supprimée avec succès' });
   } catch (error) {
-    if (error.errno === 1451) {
-      return res.status(409).json({ success: false, message: 'Impossible de supprimer : des doléances sont liées à cette catégorie' });
-    }
     res.status(500).json({ success: false, message: error.message });
   }
 };

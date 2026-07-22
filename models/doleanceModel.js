@@ -507,7 +507,7 @@ const searchSuggestions = async (q) => {
 };
 
 const getDefaultDirection = async (id_categorie) => {
-  return directionParCategorie[Number(id_categorie)] || 1;
+  return directionParCategorie[Number(id_categorie)] ?? null;
 };
 
 const listAssignedLocations = async () => {
