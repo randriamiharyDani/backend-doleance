@@ -540,7 +540,7 @@ const createDoleance = async (req, res) => {
       identifiant_citoyen,
       nom_citoyen, prenom_citoyen, telephone_citoyen, email_citoyen, adresse_citoyen,
       titre, description, id_categorie, id_quartier,
-      latitude, longitude, lieu_exact, suggestions
+      latitude, longitude, lieu_exact, suggestions, module
     } = req.body;
 
     if (!nom_citoyen || !prenom_citoyen || !titre || !description || !id_categorie) {
@@ -575,7 +575,9 @@ const createDoleance = async (req, res) => {
       }
 
       const reference = doleanceModel.generateReference();
-      const defaultStatut = 1;
+      const isSapeursPompiers = module === 'Sapeurs-Pompiers';
+      const defaultStatut = isSapeursPompiers ? 9 : 1;
+      const defaultPriorite = isSapeursPompiers ? 4 : 2;
       let defaultDirection = await doleanceModel.getDefaultDirection(id_categorie);
 
       const directionsExist = await referenceModel.findDirectionById(connection, defaultDirection);
@@ -589,6 +591,7 @@ const createDoleance = async (req, res) => {
       const id_doleance = await doleanceModel.create(connection, {
         reference, titre, description, id_citoyen, id_categorie,
         id_quartier: quartierValue, id_direction: defaultDirection, id_statut: defaultStatut,
+        id_priorite: defaultPriorite,
         latitude: latitude || null, longitude: longitude || null, lieu_exact: lieu_exact || null,
         suggestions: suggestions || null
       });
@@ -597,7 +600,7 @@ const createDoleance = async (req, res) => {
         id_doleance,
         id_statut_ancien: null,
         id_statut_nouveau: defaultStatut,
-        commentaire: 'Création de la doléance'
+        commentaire: isSapeursPompiers ? 'Création de la doléance (Sapeurs-Pompiers) - Statut urgent' : 'Création de la doléance'
       });
 
       await connection.commit();

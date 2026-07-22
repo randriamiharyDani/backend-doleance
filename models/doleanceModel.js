@@ -310,8 +310,8 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
-const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions }) => {
-  const defaultPriorite = 2;
+const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut, id_priorite, latitude, longitude, lieu_exact, suggestions }) => {
+  const defaultPriorite = id_priorite || 2;
   const [result] = await connection.execute(
     `INSERT INTO doleances 
      (reference, titre, description, id_citoyen, id_categorie, id_priorite, 

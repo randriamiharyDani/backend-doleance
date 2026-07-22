@@ -8,11 +8,11 @@ const getDashboardStats = async (req, res) => {
     const userId = req.user.id_utilisateur;
     const userRole = req.user.role_nom || req.user.nom_role;
     const userDirectionId = req.user.id_direction;
+    const { id_categorie } = req.query;
 
     let directionFilter = '';
     let params = [];
 
-    // Filtrer selon le rôle
     if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
       if (userDirectionId) {
         directionFilter = ' AND id_direction = ?';
@@ -23,27 +23,29 @@ const getDashboardStats = async (req, res) => {
       }
     }
 
-    // Total des doléances
+    let categorieFilter = '';
+    if (id_categorie) {
+      categorieFilter = ' AND id_categorie = ?';
+      params.push(Number(id_categorie));
+    }
+
     const [totalResult] = await pool.execute(
-      `SELECT COUNT(*) as total FROM doleances WHERE 1=1 ${directionFilter}`,
+      `SELECT COUNT(*) as total FROM doleances WHERE 1=1 ${directionFilter}${categorieFilter}`,
       params
     );
 
-    // Doléances en cours (statuts 1-4)
     const [enCoursResult] = await pool.execute(
-      `SELECT COUNT(*) as enCours FROM doleances WHERE id_statut IN (1,2,3,4) ${directionFilter}`,
+      `SELECT COUNT(*) as enCours FROM doleances WHERE id_statut IN (1,2,3,4) ${directionFilter}${categorieFilter}`,
       params
     );
 
-    // Doléances résolues (statuts 5-6)
     const [resoluesResult] = await pool.execute(
-      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut IN (5,6) ${directionFilter}`,
+      `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut IN (5,6) ${directionFilter}${categorieFilter}`,
       params
     );
 
-    // Doléances urgentes (statut Urgente OU priorité urgente)
     const [urgentesResult] = await pool.execute(
-      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = 9 OR id_priorite = 4 ${directionFilter}`,
+      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = 9 OR id_priorite = 4 ${directionFilter}${categorieFilter}`,
       params
     );
 
@@ -201,12 +203,13 @@ const getStatsByCategorie = async (req, res) => {
     const [stats] = await pool.execute(
       `SELECT c.id_categorie, c.nom_categorie, c.couleur,
               COUNT(d.id_doleance) as count,
-              ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) as percentage
+              CASE WHEN ? > 0 THEN ROUND(COUNT(d.id_doleance) * 100.0 / ?, 2) ELSE 0 END as percentage
        FROM categories_doleance c
        LEFT JOIN doleances d ON c.id_categorie = d.id_categorie ${dateCondition} ${directionFilter}
+       WHERE c.actif = 1
        GROUP BY c.id_categorie
        ORDER BY count DESC`,
-      [...params, totalDoleances]
+      [totalDoleances, totalDoleances]
     );
 
     res.json({ success: true, data: stats });
