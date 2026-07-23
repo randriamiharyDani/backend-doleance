@@ -25,24 +25,24 @@ const getCategorieById = async (id) => {
 };
 
 const createCategorie = async (data) => {
-  const { nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module } = data;
+  const { nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module } = data;
   const [result] = await pool.execute(
-    `INSERT INTO categories_doleance (nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [nom_categorie, nom_malgache || null, description || null, direction_concernee || null, couleur || null, icone || null, module || 'CUA']
+    `INSERT INTO categories_doleance (nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [nom_categorie, nom_malgache || null, description || null, direction_concernee || null, id_direction || null, couleur || null, icone || null, module || 'CUA']
   );
   return result.insertId;
 };
 
 const updateCategorie = async (id, data) => {
-  const { nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif } = data;
+  const { nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module, actif } = data;
   const [result] = await pool.execute(
     `UPDATE categories_doleance SET
        nom_categorie = ?, nom_malgache = ?, description = ?, direction_concernee = ?,
-       couleur = ?, icone = ?, module = ?, actif = ?
+       id_direction = ?, couleur = ?, icone = ?, module = ?, actif = ?
      WHERE id_categorie = ?`,
     [nom_categorie, nom_malgache || null, description || null, direction_concernee || null,
-     couleur || null, icone || null, module || 'CUA', actif !== undefined ? actif : 1, id]
+     id_direction || null, couleur || null, icone || null, module || 'CUA', actif !== undefined ? actif : 1, id]
   );
   return result.affectedRows;
 };

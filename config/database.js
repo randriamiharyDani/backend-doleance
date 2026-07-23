@@ -269,6 +269,7 @@ const createTables = async () => {
       id_reponse INT PRIMARY KEY AUTO_INCREMENT,
       id_doleance INT,
       id_utilisateur INT,
+      id_citoyen INT,
       message TEXT NOT NULL,
       est_interne BOOLEAN DEFAULT FALSE,
       date_reponse TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -395,7 +396,9 @@ const runMigrations = async () => {
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS nom_malgache VARCHAR(200) NULL AFTER nom_categorie`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS direction_concernee VARCHAR(200) NULL AFTER description`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers') DEFAULT 'CUA' AFTER direction_concernee`,
-    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS id_direction INT NULL AFTER actif`,
+    `ALTER TABLE reponses ADD COLUMN id_citoyen INT NULL AFTER id_utilisateur`
   ];
 
   // Création de la table password_reset_tokens

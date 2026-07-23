@@ -387,7 +387,7 @@ const getDoleanceByReference = async (req, res) => {
     let reponses = [], historique = [], piecesJointes = [];
     try {
       const results = await Promise.all([
-        reponseModel.findByDoleanceId(doleance.id_doleance),
+        reponseModel.findByDoleanceId(doleance.id_doleance, { includeInternal: false }),
         historiqueModel.findByDoleanceId(doleance.id_doleance),
         pieceJointeModel.findByDoleanceId(doleance.id_doleance)
       ]);
@@ -503,7 +503,7 @@ const getDoleanceByReferenceAndCitizenId = async (req, res) => {
 
     const doleance = doleances[0];
     const [reponses, historique, piecesJointes] = await Promise.all([
-      reponseModel.findByDoleanceId(doleance.id_doleance),
+      reponseModel.findByDoleanceId(doleance.id_doleance, { includeInternal: false }),
       historiqueModel.findByDoleanceId(doleance.id_doleance),
       pieceJointeModel.findByDoleanceId(doleance.id_doleance)
     ]);
@@ -687,18 +687,59 @@ const updateStatut = async (req, res) => {
   }
 };
 
-// ========== AJOUTER UNE RÉPONSE ==========
+// ========== AJOUTER UNE RÉPONSE (AGENT/ADMIN) ==========
 const addReponse = async (req, res) => {
   try {
     const { id } = req.params;
-    const { message } = req.body;
+    const { message, est_interne } = req.body;
     const userId = req.user?.id_utilisateur || 1;
 
-    await reponseModel.create({ id_doleance: id, id_utilisateur: userId, message });
+    await reponseModel.create({ id_doleance: id, id_utilisateur: userId, message, est_interne });
 
     res.status(201).json({ success: true, message: 'Réponse ajoutée avec succès' });
   } catch (error) {
     console.error('Add reponse error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ========== AJOUTER UNE RÉPONSE CITOYEN (PUBLIC) ==========
+const addReponseCitoyen = async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const { identifiant_citoyen, message } = req.body;
+
+    if (!identifiant_citoyen || !identifiant_citoyen.trim()) {
+      return res.status(400).json({ success: false, message: "L'identifiant citoyen est requis" });
+    }
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'Le message est requis' });
+    }
+
+    const citoyens = await citoyenModel.findByIdentifiant(identifiant_citoyen.trim());
+    if (citoyens.length === 0) {
+      return res.status(404).json({ success: false, message: 'Identifiant citoyen invalide' });
+    }
+
+    const doleances = await doleanceModel.findByReference(reference);
+    if (!doleances || doleances.length === 0) {
+      return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
+    }
+
+    const doleance = doleances[0];
+    if (doleance.id_citoyen !== citoyens[0].id_citoyen) {
+      return res.status(403).json({ success: false, message: 'Vous ne pouvez répondre qu\'à vos propres doléances' });
+    }
+
+    await reponseModel.createByCitizen({
+      id_doleance: doleance.id_doleance,
+      id_citoyen: citoyens[0].id_citoyen,
+      message: message.trim()
+    });
+
+    res.status(201).json({ success: true, message: 'Réponse envoyée avec succès' });
+  } catch (error) {
+    console.error('Add reponse citoyen error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -1064,6 +1105,7 @@ module.exports = {
   getDoleanceByReferenceAndCitizenId,
   updateStatut,
   addReponse,
+  addReponseCitoyen,
   addSatisfaction,
   deleteDoleance,
   updatePriorite,
