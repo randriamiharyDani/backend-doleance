@@ -1,3 +1,4 @@
+const fs = require('fs');
 const { pool } = require('../config/database');
 const doleanceModel = require('../models/doleanceModel');
 const citoyenModel = require('../models/citoyenModel');
@@ -33,7 +34,9 @@ const handleUploadPiecesJointes = async (req, res) => {
 
       const uploadedFiles = [];
       for (const file of req.files) {
-        const type = file.mimetype.startsWith('image/') ? 'image' : 'video';
+        let type = 'image';
+        if (file.mimetype.startsWith('video/')) type = 'video';
+        else if (file.mimetype === 'application/pdf') type = 'pdf';
         const id = await pieceJointeModel.insert(connection, {
           id_doleance: doleance_id,
           filename: file.filename,
@@ -59,6 +62,9 @@ const handleUploadPiecesJointes = async (req, res) => {
       });
     } catch (error) {
       await connection.rollback();
+      for (const file of req.files) {
+        try { if (fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+      }
       console.error('Upload pieces jointes error:', error.message, error.code, error.sql);
       res.status(500).json({ success: false, message: 'Erreur lors de l\'enregistrement des fichiers', detail: error.message });
     } finally {
@@ -70,12 +76,15 @@ const handleUploadPiecesJointes = async (req, res) => {
 const getPiecesJointes = async (req, res) => {
   try {
     const { id } = req.params;
+    if (!id) {
+      return res.json({ success: true, data: [] });
+    }
     const pieces = await pieceJointeModel.findByDoleanceId(id);
-    const piecesWithUrl = pieceJointeModel.buildFileUrls(pieces, req);
-    res.json({ success: true, data: piecesWithUrl });
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(pieces || [], req);
+    res.json({ success: true, data: piecesWithUrl || [] });
   } catch (error) {
-    console.error('Get pieces jointes error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Get pieces jointes error:', error.message);
+    res.json({ success: true, data: [] });
   }
 };
 
@@ -87,7 +96,10 @@ const downloadPieceJointe = async (req, res) => {
     if (pieces.length === 0) {
       return res.status(404).json({ success: false, message: 'Fichier non trouvé' });
     }
-    res.download(pieces[0].chemin_fichier, pieces[0].nom_fichier);
+    if (!fs.existsSync(pieces[0].chemin)) {
+      return res.status(404).json({ success: false, message: 'Fichier introuvable sur le serveur' });
+    }
+    res.download(pieces[0].chemin, pieces[0].nom_fichier);
   } catch (error) {
     console.error('Download piece jointe error:', error);
     res.status(500).json({ success: false, message: error.message });

@@ -51,6 +51,7 @@ router.get('/public/:reference', getDoleanceByReference);
 router.get('/public/citoyen/:identifiant/doleances', getDoleancesByCitizenId);
 router.get('/public/citoyen/:identifiant/doleance/:reference', getDoleanceByReferenceAndCitizenId);
 router.post('/public/:reference/reponse', addReponseCitoyen);
+router.get('/public/pieces/:id/download', downloadPieceJointe);
 
 // Routes publiques pour les données de référence
 router.get('/categories', getCategories);

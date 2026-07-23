@@ -19,11 +19,16 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedTypes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+    'application/pdf'
+  ];
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Type de fichier non supporté. Seules les images (JPG, PNG, GIF, WebP) sont acceptées.'), false);
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(new Error(`Type de fichier non autorisé "${ext}". Formats acceptés : JPG, PNG, GIF, WebP, MP4, MOV, AVI, MKV, PDF`));
   }
 };
 
@@ -43,14 +48,19 @@ const insert = async (connection, { id_doleance, filename, filepath, type, taill
 };
 
 const findByDoleanceId = async (id_doleance) => {
-  const [rows] = await pool.execute(
-    `SELECT id_piece, nom_fichier, type_fichier, taille, date_upload
-     FROM pieces_jointes 
-     WHERE id_doleance = ?
-     ORDER BY date_upload DESC`,
-    [id_doleance]
-  );
-  return rows;
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id_piece, nom_fichier, chemin, type_fichier, taille, date_upload
+       FROM pieces_jointes 
+       WHERE id_doleance = ?
+       ORDER BY date_upload DESC`,
+      [id_doleance]
+    );
+    return rows || [];
+  } catch (error) {
+    console.error('findByDoleanceId error:', error.message);
+    return [];
+  }
 };
 
 const findById = async (id_piece) => {
@@ -84,7 +94,8 @@ const deleteByDoleanceId = async (id_doleance) => {
 };
 
 const buildFileUrls = (pieces, req) => {
-  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+  if (!pieces || !Array.isArray(pieces) || pieces.length === 0) return [];
+  const baseUrl = process.env.BASE_URL || `${req?.protocol}://${req?.get('host')}`;
   return pieces.map(piece => ({
     ...piece,
     url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
