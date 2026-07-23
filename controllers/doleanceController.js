@@ -897,6 +897,9 @@ const getStatsOverview = async (req, res) => {
     const [urgentes] = await pool.execute(
       `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'Urgente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
+    const [transferts] = await pool.execute(
+      `SELECT COUNT(*) as transferts FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'transferee') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
+    );
 
     const [parCategorie] = await pool.execute(`
       SELECT c.nom_categorie, COUNT(d.id_doleance) as total
@@ -925,6 +928,7 @@ const getStatsOverview = async (req, res) => {
         en_cours: enCours[0].en_cours || 0,
         resolues: resolues[0].resolues || 0,
         urgentes: urgentes[0].urgentes || 0,
+        transferts: transferts[0].transferts || 0,
         par_categorie: parCategorie || [],
         par_priorite: parPriorite || []
       }
