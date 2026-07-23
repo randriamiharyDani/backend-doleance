@@ -59,13 +59,13 @@ router.delete('/directions/:id', authorize('administrateur_systeme', 'administra
 // Doléances
 router.get('/doleances', getDoleances);
 router.get('/doleances/:id', getDoleanceById);
-router.put('/doleances/:id', updateDoleance);
+router.put('/doleances/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent_central'), updateDoleance);
 router.delete('/doleances/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteDoleance);
 
 // Citoyens
-router.get('/citoyens', getCitoyens);
-router.get('/citoyens/:id', getCitoyenById);
-router.post('/citoyens', createCitoyen);
+router.get('/citoyens', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getCitoyens);
+router.get('/citoyens/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getCitoyenById);
+router.post('/citoyens', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createCitoyen);
 
 // Catégories
 router.get('/categories/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getCategorieById);
@@ -74,37 +74,37 @@ router.put('/categories/:id', authorize('administrateur_systeme', 'administrateu
 router.delete('/categories/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteCategorie);
 
 // Réponses
-router.get('/reponses', getReponses);
-router.post('/reponses', createReponse);
+router.get('/reponses', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), getReponses);
+router.post('/reponses', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), createReponse);
 
 // Assignations
-router.get('/assignations', getAssignations);
-router.post('/assignations', createAssignation);
+router.get('/assignations', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getAssignations);
+router.post('/assignations', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), createAssignation);
 
 // Historique
-router.get('/historique-statuts', getHistoriqueStatuts);
-router.post('/historique-statuts', createHistoriqueStatut);
+router.get('/historique-statuts', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), getHistoriqueStatuts);
+router.post('/historique-statuts', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), createHistoriqueStatut);
 
 // Transferts
-router.get('/transferts', getTransferts);
-router.post('/transferts', createTransfert);
+router.get('/transferts', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur'), getTransferts);
+router.post('/transferts', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createTransfert);
 
 // Pièces jointes
-router.get('/pieces-jointes', getPiecesJointes);
-router.post('/pieces-jointes', createPieceJointe);
-router.delete('/pieces-jointes/:id', deletePieceJointe);
+router.get('/pieces-jointes', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), getPiecesJointes);
+router.post('/pieces-jointes', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), createPieceJointe);
+router.delete('/pieces-jointes/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), deletePieceJointe);
 
 // Commentaires internes
-router.get('/commentaires-internes', getCommentairesInternes);
-router.post('/commentaires-internes', createCommentaireInterne);
+router.get('/commentaires-internes', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), getCommentairesInternes);
+router.post('/commentaires-internes', authorize('administrateur_systeme', 'administrateur', 'agent_central', 'directeur', 'agent'), createCommentaireInterne);
 
 // Notifications
 router.get('/notifications', getNotifications);
-router.post('/notifications', createNotification);
+router.post('/notifications', authorize('administrateur_systeme'), createNotification);
 router.put('/notifications/:id/read', markNotificationAsRead);
 
 // Logs
-router.get('/logs-activites', getLogsActivites);
-router.post('/logs-activites', createLogActivite);
+router.get('/logs-activites', authorize('administrateur_systeme'), getLogsActivites);
+router.post('/logs-activites', authorize('administrateur_systeme'), createLogActivite);
 
 module.exports = router;

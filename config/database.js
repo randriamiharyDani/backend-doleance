@@ -140,6 +140,20 @@ const insertInitialData = async () => {
       (5, 'Zone Touristique', '75005')
     `);
     
+    // Insertion des catégories Sapeurs-Pompiers (si absentes)
+    await promisePool.execute(`
+      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, couleur, icone, module, actif) VALUES
+      (30, 'Incendie', 'Afo', 'Incendies domestiques et industriels', 'Chef de corps des Sapeurs Pompiers', '#EF4444', 'fire', 'Sapeurs-Pompiers', 1),
+      (31, 'Accident de circulation', 'Loza', 'Accidents de la route et secours', 'Chef de corps des Sapeurs Pompiers', '#F97316', 'accident', 'Sapeurs-Pompiers', 1),
+      (32, 'Secours à personne', 'Fanavotana', 'Personnes en danger ou blessées', 'Chef de corps des Sapeurs Pompiers', '#3B82F6', 'medical', 'Sapeurs-Pompiers', 1),
+      (33, 'Inondation', 'Tondra-drano', 'Zones inondées et assistance', 'Chef de corps des Sapeurs Pompiers', '#06B6D4', 'flood', 'Sapeurs-Pompiers', 1),
+      (34, 'Catastrophe naturelle', 'Loza voajanahary', 'Tremblements de terre, cyclones', 'Chef de corps des Sapeurs Pompiers', '#8B5CF6', 'disaster', 'Sapeurs-Pompiers', 1),
+      (35, 'Animal dangereux', 'Biby mampidi-doza', 'Animaux errants ou dangereux', 'Chef de corps des Sapeurs Pompiers', '#84CC16', 'animal', 'Sapeurs-Pompiers', 1),
+      (36, 'Produit dangereux', 'Zavatra mampidi-doza', 'Fuite de gaz, produits chimiques', 'Chef de corps des Sapeurs Pompiers', '#EC4899', 'hazard', 'Sapeurs-Pompiers', 1),
+      (37, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'clipboard', 'Sapeurs-Pompiers', 1),
+      (38, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, '#6B7280', 'clipboard', 'CUA', 1)
+    `).catch(() => {});
+
     // Insertion de l'administrateur par défaut (mot de passe: admin123)
     const hashedPassword = await bcrypt.hash('admin123', 10);
     await promisePool.execute(`
@@ -363,6 +377,16 @@ const createTables = async () => {
       user_agent TEXT,
       date_action TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (id_utilisateur) REFERENCES utilisateurs(id_utilisateur)
+    )`,
+    
+    `CREATE TABLE IF NOT EXISTS services (
+      id_service INT PRIMARY KEY AUTO_INCREMENT,
+      id_direction INT,
+      nom_service VARCHAR(100) NOT NULL,
+      description TEXT,
+      actif BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (id_direction) REFERENCES directions(id_direction) ON DELETE CASCADE
     )`
   ];
   
@@ -398,6 +422,8 @@ const runMigrations = async () => {
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers') DEFAULT 'CUA' AFTER direction_concernee`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS id_direction INT NULL AFTER actif`,
+    `ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system TINYINT(1) DEFAULT 0 AFTER permissions`,
+    `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS id_service INT NULL AFTER id_direction`,
     `ALTER TABLE reponses ADD COLUMN id_citoyen INT NULL AFTER id_utilisateur`
   ];
 

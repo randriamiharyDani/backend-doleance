@@ -34,8 +34,8 @@ const upload = multer({
 }).array('files', 5);
 
 const insert = async (connection, { id_doleance, filename, filepath, type, taille }) => {
-  const [result] = await connection.query(
-    `INSERT INTO pieces_jointes (id_doleance, nom_fichier, chemin_fichier, type, taille, date_upload)
+  const [result] = await connection.execute(
+    `INSERT INTO pieces_jointes (id_doleance, nom_fichier, chemin, type_fichier, taille, date_upload)
      VALUES (?, ?, ?, ?, ?, NOW())`,
     [Number(id_doleance), filename, filepath, type, taille]
   );
@@ -44,7 +44,7 @@ const insert = async (connection, { id_doleance, filename, filepath, type, taill
 
 const findByDoleanceId = async (id_doleance) => {
   const [rows] = await pool.execute(
-    `SELECT id_piece, nom_fichier, type AS type_fichier, taille, date_upload
+    `SELECT id_piece, nom_fichier, type_fichier, taille, date_upload
      FROM pieces_jointes 
      WHERE id_doleance = ?
      ORDER BY date_upload DESC`,
@@ -55,29 +55,29 @@ const findByDoleanceId = async (id_doleance) => {
 
 const findById = async (id_piece) => {
   const [rows] = await pool.execute(
-    'SELECT nom_fichier, chemin_fichier FROM pieces_jointes WHERE id_piece = ?',
+    'SELECT nom_fichier, chemin FROM pieces_jointes WHERE id_piece = ?',
     [id_piece]
   );
   return rows;
 };
 
 const deleteById = async (id_piece) => {
-  const [pieces] = await pool.execute('SELECT chemin_fichier FROM pieces_jointes WHERE id_piece = ?', [id_piece]);
-  if (pieces.length > 0 && fs.existsSync(pieces[0].chemin_fichier)) {
-    fs.unlinkSync(pieces[0].chemin_fichier);
+  const [pieces] = await pool.execute('SELECT chemin FROM pieces_jointes WHERE id_piece = ?', [id_piece]);
+  if (pieces.length > 0 && fs.existsSync(pieces[0].chemin)) {
+    fs.unlinkSync(pieces[0].chemin);
   }
   await pool.execute('DELETE FROM pieces_jointes WHERE id_piece = ?', [id_piece]);
 };
 
 const deleteByDoleanceId = async (id_doleance) => {
-  const [pieces] = await pool.execute('SELECT chemin_fichier FROM pieces_jointes WHERE id_doleance = ?', [id_doleance]);
+  const [pieces] = await pool.execute('SELECT chemin FROM pieces_jointes WHERE id_doleance = ?', [id_doleance]);
   for (const piece of pieces) {
     try {
-      if (fs.existsSync(piece.chemin_fichier)) {
-        fs.unlinkSync(piece.chemin_fichier);
+      if (fs.existsSync(piece.chemin)) {
+        fs.unlinkSync(piece.chemin);
       }
     } catch (err) {
-      console.warn('Impossible de supprimer le fichier:', piece.chemin_fichier, err.message);
+      console.warn('Impossible de supprimer le fichier:', piece.chemin, err.message);
     }
   }
   await pool.execute('DELETE FROM pieces_jointes WHERE id_doleance = ?', [id_doleance]);

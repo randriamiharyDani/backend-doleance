@@ -173,15 +173,10 @@ const deleteUser = async (req, res) => {
     }
 
     try {
-      await pool.execute('DELETE FROM notifications WHERE id_utilisateur = ?', [id]);
+      await pool.execute('DELETE FROM notifications WHERE id_destinataire = ?', [id]);
       console.log('  - Notifications supprimées');
     } catch (err) {
-      try {
-        await pool.execute('DELETE FROM notifications WHERE user_id = ?', [id]);
-        console.log('  - Notifications supprimées (user_id)');
-      } catch (err2) {
-        console.log('  - Notifications: ignoré');
-      }
+      console.log('  - Notifications: ignoré', err.message);
     }
 
     try {
