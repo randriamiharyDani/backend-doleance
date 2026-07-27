@@ -385,6 +385,48 @@ const createTables = async () => {
       actif BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (id_direction) REFERENCES directions(id_direction) ON DELETE CASCADE
+    )`,
+    
+    `CREATE TABLE IF NOT EXISTS chat_messages (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      sender_id INT NOT NULL,
+      receiver_id INT NOT NULL,
+      message TEXT DEFAULT NULL,
+      attachment_path VARCHAR(255) DEFAULT NULL,
+      attachment_name VARCHAR(255) DEFAULT NULL,
+      attachment_type VARCHAR(100) DEFAULT NULL,
+      attachment_size INT DEFAULT NULL,
+      is_read TINYINT(1) DEFAULT 0,
+      created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+      FOREIGN KEY (sender_id) REFERENCES utilisateurs(id_utilisateur) ON DELETE CASCADE,
+      FOREIGN KEY (receiver_id) REFERENCES utilisateurs(id_utilisateur) ON DELETE CASCADE,
+      INDEX idx_chat_conversation (sender_id, receiver_id, created_at),
+      INDEX idx_chat_unread (receiver_id, is_read)
+    )`,
+    
+    `CREATE TABLE IF NOT EXISTS chat_calls (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      caller_id INT NOT NULL,
+      callee_id INT NOT NULL,
+      call_type ENUM('audio', 'video') NOT NULL DEFAULT 'audio',
+      status ENUM('ringing', 'accepted', 'rejected', 'ended', 'missed') DEFAULT 'ringing',
+      started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME DEFAULT NULL,
+      FOREIGN KEY (caller_id) REFERENCES utilisateurs(id_utilisateur) ON DELETE CASCADE,
+      FOREIGN KEY (callee_id) REFERENCES utilisateurs(id_utilisateur) ON DELETE CASCADE,
+      INDEX idx_chat_call_callee (callee_id, status)
+    )`,
+    
+    `CREATE TABLE IF NOT EXISTS chat_signals (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      call_id INT NOT NULL,
+      sender_id INT NOT NULL,
+      receiver_id INT NOT NULL,
+      signal_type ENUM('offer', 'answer', 'ice-candidate', 'hangup') NOT NULL,
+      signal_data MEDIUMTEXT DEFAULT NULL,
+      created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+      FOREIGN KEY (call_id) REFERENCES chat_calls(id) ON DELETE CASCADE,
+      INDEX idx_chat_signal_polling (call_id, receiver_id, id)
     )`
   ];
   

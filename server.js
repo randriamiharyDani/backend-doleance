@@ -128,6 +128,7 @@ const directionRoutes = require('./routes/directionRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
 const corbeilleRoutes = require('./routes/corbeilleRoutes');
 const globalRoutes = require('./routes/globalRoutes');
+const chatRoutes = require('./routes/chatRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/doleances', doleanceRoutes);
@@ -139,6 +140,7 @@ app.use('/api/transfert', transfertRoutes);
 app.use('/api/directions', directionRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/corbeille', corbeilleRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api', globalRoutes);
 
 // ================================
@@ -403,6 +405,75 @@ io.on('connection', (socket) => {
 
   socket.on('error', (error) => {
     console.error(`❌ Erreur socket ${socket.id}:`, error);
+  });
+
+  // ========== CHAT - MESSAGERIE ==========
+  socket.on('chat-join', (userId) => {
+    socket.join(`user_${userId}`);
+    console.log(`💬 User ${userId} joined chat room`);
+  });
+
+  socket.on('chat-message', (data) => {
+    const { receiver_id } = data;
+    if (receiver_id) {
+      io.to(`user_${receiver_id}`).emit('new-message', {
+        ...data,
+        sender_id: socket.userId,
+        sender_name: socket.userName,
+      });
+    }
+  });
+
+  socket.on('chat-typing', (data) => {
+    const { receiverId, senderName } = data;
+    io.to(`user_${receiverId}`).emit('chat-typing', {
+      userId: socket.userId,
+      user_id: socket.userId,
+      senderName: senderName || socket.userName,
+    });
+  });
+
+  socket.on('chat-stop-typing', (data) => {
+    const { receiverId } = data;
+    io.to(`user_${receiverId}`).emit('chat-stop-typing', { userId: socket.userId });
+  });
+
+  // ========== CHAT - APPELS WEBRTC ==========
+  socket.on('call-invite', (data) => {
+    const { calleeId, callId, callType, callerName } = data;
+    io.to(`user_${calleeId}`).emit('call-invite', {
+      callId,
+      callerId: socket.userId,
+      callerName: callerName || socket.userName,
+      callType,
+    });
+    console.log(`📞 Appel de ${socket.userId} vers ${calleeId}`);
+  });
+
+  socket.on('call-accept', (data) => {
+    const { callerId, callId } = data;
+    io.to(`user_${callerId}`).emit('call-accept', { callId, calleeId: socket.userId });
+    console.log(`📞 Appel ${callId} accepté par ${socket.userId}`);
+  });
+
+  socket.on('call-reject', (data) => {
+    const { callerId, callId } = data;
+    io.to(`user_${callerId}`).emit('call-reject', { callId, calleeId: socket.userId });
+    console.log(`📞 Appel ${callId} refusé par ${socket.userId}`);
+  });
+
+  socket.on('call-end', (data) => {
+    const { otherUserId, callId } = data;
+    io.to(`user_${otherUserId}`).emit('call-end', { callId, userId: socket.userId });
+    console.log(`📞 Appel ${callId} terminé par ${socket.userId}`);
+  });
+
+  socket.on('call-signal', (data) => {
+    const { receiverId, signal } = data;
+    io.to(`user_${receiverId}`).emit('call-signal', {
+      senderId: socket.userId,
+      signal,
+    });
   });
 
   // ========== DECONNEXION ==========
