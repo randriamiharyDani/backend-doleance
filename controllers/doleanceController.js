@@ -359,16 +359,32 @@ const transfererDoleanceCentral = async (req, res) => {
 
       console.log('✅ Doléance transférée avec succès');
 
-      // Notifier les agents de la direction destinatrice
+      // Notifier les agents de la direction destinatrice + admins
       try {
         const agentsDir = await notificationModel.findUtilisateursByDirection(id_direction);
+        const admins = await notificationModel.findAdminIds();
+        const recipients = [...new Set([...agentsDir.map(a => a.id_utilisateur), ...admins.map(a => a.id_utilisateur)])];
         const titreNotif = 'Doléance transférée';
         const messageNotif = `La doléance ${doleance[0].reference} a été transférée vers ${direction[0].nom_direction}`;
-        for (const agent of agentsDir) {
-          await notificationController.createNotification(
-            agent.id_utilisateur, titreNotif, messageNotif, 'transfert_doleance', id,
+        const io = req.app?.get?.('io');
+        for (const uid of recipients) {
+          const notifId = await notificationController.createNotification(
+            uid, titreNotif, messageNotif, 'transfert_doleance', id,
             { reference: doleance[0].reference, titre: doleance[0].titre, direction: direction[0].nom_direction }
           );
+          if (notifId && io) {
+            const nonLues = await notificationModel.countUnreadByUser(uid);
+            io.to(`user_${uid}`).emit('newNotification', {
+              id_notification: notifId,
+              type: 'transfert_doleance',
+              titre: titreNotif,
+              message: messageNotif,
+              doleance_reference: doleance[0].reference,
+              doleance_titre: doleance[0].titre,
+              non_lues: nonLues,
+              date_notification: new Date().toISOString()
+            });
+          }
         }
       } catch (notifErr) {
         console.error('Erreur notification transfert:', notifErr.message);
@@ -686,6 +702,41 @@ const updateStatut = async (req, res) => {
       } catch (emailErr) {
         console.error('Erreur préparation email statut:', emailErr.message);
       }
+    }
+
+    // Notifier les agents centraux du changement de statut
+    try {
+      const doleanceData = await doleanceModel.findById(id);
+      if (doleanceData.length > 0) {
+        const nouveauStatut = await referenceModel.getStatuts();
+        const statutTrouve = nouveauStatut.find(s => s.id_statut === Number(id_statut));
+        const nomStatut = statutTrouve?.nom_statut || 'Mis à jour';
+        const admins = await notificationModel.findAdminIds();
+        const titreNotif = 'Statut mis à jour';
+        const messageNotif = `La doléance ${doleanceData[0].reference} a un nouveau statut: ${nomStatut}`;
+        const io = req.app?.get?.('io');
+        for (const admin of admins) {
+          const notifId = await notificationController.createNotification(
+            admin.id_utilisateur, titreNotif, messageNotif, 'changement_statut', id,
+            { reference: doleanceData[0].reference, titre: doleanceData[0].titre, statut: nomStatut }
+          );
+          if (notifId && io) {
+            const nonLues = await notificationModel.countUnreadByUser(admin.id_utilisateur);
+            io.to(`user_${admin.id_utilisateur}`).emit('newNotification', {
+              id_notification: notifId,
+              type: 'changement_statut',
+              titre: titreNotif,
+              message: messageNotif,
+              doleance_reference: doleanceData[0].reference,
+              doleance_titre: doleanceData[0].titre,
+              non_lues: nonLues,
+              date_notification: new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.error('Erreur notification statut:', notifErr.message);
     }
 
     res.json({ success: true, message: 'Statut mis à jour avec succès' });
@@ -1149,6 +1200,35 @@ const retournerDoleance = async (req, res) => {
       });
 
       await connection.commit();
+
+      // Notifier les agents centraux que la doléance est retournée
+      try {
+        const admins = await notificationModel.findAdminIds();
+        const titreNotif = 'Doléance retournée';
+        const messageNotif = `La doléance ${doleance[0].reference} a été retournée par l'agent de la direction — Motif: ${motifText}`;
+        const io = req.app?.get?.('io');
+        for (const admin of admins) {
+          const notifId = await notificationController.createNotification(
+            admin.id_utilisateur, titreNotif, messageNotif, 'retour_doleance', id,
+            { reference: doleance[0].reference, titre: doleance[0].titre, motif: motifText }
+          );
+          if (notifId && io) {
+            const nonLues = await notificationModel.countUnreadByUser(admin.id_utilisateur);
+            io.to(`user_${admin.id_utilisateur}`).emit('newNotification', {
+              id_notification: notifId,
+              type: 'retour_doleance',
+              titre: titreNotif,
+              message: messageNotif,
+              doleance_reference: doleance[0].reference,
+              doleance_titre: doleance[0].titre,
+              non_lues: nonLues,
+              date_notification: new Date().toISOString()
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error('Erreur notification retour:', notifErr.message);
+      }
 
       res.json({
         success: true,
