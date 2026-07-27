@@ -22,6 +22,7 @@ const io = new Server(server, {
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174'
+      // 'http://192.168.99.134:5173'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true
@@ -73,6 +74,7 @@ app.use(
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174'
+      // 'http://192.168.99.134:5173'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -447,33 +449,48 @@ io.on('connection', (socket) => {
       callerName: callerName || socket.userName,
       callType,
     });
-    console.log(`📞 Appel de ${socket.userId} vers ${calleeId}`);
+    console.log(`📞 Invitation appel de ${socket.userId} vers ${calleeId}`);
   });
 
   socket.on('call-accept', (data) => {
-    const { callerId, callId } = data;
-    io.to(`user_${callerId}`).emit('call-accept', { callId, calleeId: socket.userId });
-    console.log(`📞 Appel ${callId} accepté par ${socket.userId}`);
+    const { callerId, call_id, callId } = data;
+    const targetId = callerId || call_id;
+    const cId = callId || call_id;
+    io.to(`user_${targetId}`).emit('call-accept', { callId: cId, calleeId: socket.userId });
+    console.log(`📞 Appel ${cId} accepté par ${socket.userId}`);
   });
 
   socket.on('call-reject', (data) => {
-    const { callerId, callId } = data;
-    io.to(`user_${callerId}`).emit('call-reject', { callId, calleeId: socket.userId });
-    console.log(`📞 Appel ${callId} refusé par ${socket.userId}`);
+    const { callerId, call_id, callId } = data;
+    const targetId = callerId || call_id;
+    const cId = callId || call_id;
+    io.to(`user_${targetId}`).emit('call-reject', { callId: cId, calleeId: socket.userId });
+    console.log(`📞 Appel ${cId} refusé par ${socket.userId}`);
   });
 
   socket.on('call-end', (data) => {
-    const { otherUserId, callId } = data;
-    io.to(`user_${otherUserId}`).emit('call-end', { callId, userId: socket.userId });
-    console.log(`📞 Appel ${callId} terminé par ${socket.userId}`);
+    const { otherUserId, receiver_id, call_id, callId } = data;
+    const targetId = otherUserId || receiver_id;
+    const cId = callId || call_id;
+    if (targetId) {
+      io.to(`user_${targetId}`).emit('call-end', { callId: cId, userId: socket.userId });
+    }
+    console.log(`📞 Appel ${cId} terminé par ${socket.userId}`);
   });
 
   socket.on('call-signal', (data) => {
-    const { receiverId, signal } = data;
-    io.to(`user_${receiverId}`).emit('call-signal', {
-      senderId: socket.userId,
-      signal,
-    });
+    const { call_id, receiver_id, receiverId, signal_type, signal_data, signal } = data;
+    const targetId = receiver_id || receiverId;
+    const type = signal_type;
+    const sdata = signal_data || signal;
+    if (targetId && type) {
+      io.to(`user_${targetId}`).emit('call-signal', {
+        senderId: socket.userId,
+        call_id: call_id,
+        signal_type: type,
+        signal_data: sdata,
+      });
+    }
   });
 
   // ========== DECONNEXION ==========

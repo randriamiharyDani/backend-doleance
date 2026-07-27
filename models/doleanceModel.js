@@ -282,7 +282,8 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
     LEFT JOIN statuts s ON d.id_statut = s.id_statut
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-    WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En attente')
+    WHERE d.id_statut IN (SELECT id_statut FROM statuts WHERE nom_statut IN ('Nouvelle', 'En attente'))
+    AND d.id_direction IS NULL
     AND (d.supprime IS NULL OR d.supprime = 0)
   `;
   const params = [];
@@ -296,7 +297,8 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
 
   const [countResult] = await pool.execute(
     `SELECT COUNT(*) as total FROM doleances d 
-     WHERE d.id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'En attente')
+     WHERE d.id_statut IN (SELECT id_statut FROM statuts WHERE nom_statut IN ('Nouvelle', 'En attente'))
+     AND d.id_direction IS NULL
      AND (d.supprime IS NULL OR d.supprime = 0)`
   );
   const total = countResult[0]?.total || 0;
@@ -373,7 +375,7 @@ const updateDirectionAndStatut = async (connection, id_doleance, id_direction, i
     `UPDATE doleances 
      SET id_direction = ?, id_statut = ?, date_mise_a_jour = NOW()
      WHERE id_doleance = ?`,
-    [Number(id_direction), id_statut, Number(id_doleance)]
+    [id_direction ? Number(id_direction) : null, id_statut, Number(id_doleance)]
   );
 };
 

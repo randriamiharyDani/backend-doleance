@@ -8,6 +8,7 @@ const reponseModel = require('../models/reponseModel');
 const historiqueModel = require('../models/historiqueModel');
 const transfertModel = require('../models/transfertModel');
 const directionModel = require('../models/directionModel');
+const notificationModel = require('../models/notificationModel');
 const { sendTransferEmail, sendStatusUpdateEmail, isSmtpConfigured } = require('../services/emailService');
 const notificationController = require('./notificationController');
 
@@ -357,6 +358,21 @@ const transfererDoleanceCentral = async (req, res) => {
       }
 
       console.log('✅ Doléance transférée avec succès');
+
+      // Notifier les agents de la direction destinatrice
+      try {
+        const agentsDir = await notificationModel.findUtilisateursByDirection(id_direction);
+        const titreNotif = 'Doléance transférée';
+        const messageNotif = `La doléance ${doleance[0].reference} a été transférée vers ${direction[0].nom_direction}`;
+        for (const agent of agentsDir) {
+          await notificationController.createNotification(
+            agent.id_utilisateur, titreNotif, messageNotif, 'transfert_doleance', id,
+            { reference: doleance[0].reference, titre: doleance[0].titre, direction: direction[0].nom_direction }
+          );
+        }
+      } catch (notifErr) {
+        console.error('Erreur notification transfert:', notifErr.message);
+      }
       
       const emailEnvoye = !!(emailDirection && isSmtpConfigured());
       const messageRetour = emailEnvoye
@@ -591,21 +607,12 @@ const createDoleance = async (req, res) => {
       const isSapeursPompiers = module === 'Sapeurs-Pompiers';
       const defaultStatut = isSapeursPompiers ? 9 : 1;
       const defaultPriorite = isSapeursPompiers ? 4 : 2;
-      let defaultDirection = await doleanceModel.getDefaultDirection(id_categorie);
-
-      if (defaultDirection !== null) {
-        const directionsExist = await referenceModel.findDirectionById(connection, defaultDirection);
-        if (directionsExist.length === 0) {
-          const firstDirection = await referenceModel.findFirstDirection(connection);
-          defaultDirection = firstDirection[0]?.id_direction || 1;
-        }
-      }
 
       const quartierValue = id_quartier ? Number(id_quartier) : null;
 
       const id_doleance = await doleanceModel.create(connection, {
         reference, titre, description, id_citoyen, id_categorie,
-        id_quartier: quartierValue, id_direction: defaultDirection, id_statut: defaultStatut,
+        id_quartier: quartierValue, id_direction: null, id_statut: defaultStatut,
         id_priorite: defaultPriorite,
         latitude: latitude || null, longitude: longitude || null, lieu_exact: lieu_exact || null,
         suggestions: suggestions || null
@@ -620,21 +627,10 @@ const createDoleance = async (req, res) => {
 
       await connection.commit();
 
-      notificationController.notifyNewDoleance(req, {
-        id_doleance, reference, titre, id_direction: defaultDirection,
-        citoyenNom: `${nom_citoyen} ${prenom_citoyen}`
-      });
-
-      let nomDirection = null;
-      if (defaultDirection) {
-        const dir = await referenceModel.findDirectionById(connection, defaultDirection);
-        nomDirection = dir[0]?.nom_direction || null;
-      }
-
       res.status(201).json({
         success: true,
         message: 'Doléance créée avec succès',
-        data: { id: id_doleance, id_doleance, reference, identifiant_citoyen: finalCitizenId, nom_direction: nomDirection }
+        data: { id: id_doleance, id_doleance, reference, identifiant_citoyen: finalCitizenId, nom_direction: null }
       });
     } catch (error) {
       await connection.rollback();
@@ -1106,6 +1102,70 @@ const getDoleancesAssignedLocations = async (req, res) => {
   }
 };
 
+// ========== RETOURNER UNE DOLÉANCE AU CENTRAL ==========
+const retournerDoleance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { motif } = req.body;
+    const userId = req.user?.id_utilisateur;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'ID manquant' });
+    }
+
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      const doleance = await doleanceModel.findById(id);
+      if (doleance.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ success: false, message: 'Doléance non trouvée' });
+      }
+
+      const statutNouvelle = await referenceModel.findStatutByNom(connection, 'Nouvelle');
+      const idStatutNouvelle = statutNouvelle[0]?.id_statut || 1;
+      const idDirectionSource = doleance[0].id_direction;
+
+      await doleanceModel.updateDirectionAndStatut(connection, id, null, idStatutNouvelle);
+
+      const motifText = (motif && motif.trim()) ? motif.trim() : 'Doléance retournée par l\'agent de la direction';
+
+      if (idDirectionSource) {
+        await transfertModel.create(connection, {
+          id_doleance: id,
+          id_direction_source: idDirectionSource,
+          id_direction_destination: null,
+          id_utilisateur: userId,
+          motif: motifText
+        });
+      }
+
+      await historiqueModel.create(connection, {
+        id_doleance: Number(id),
+        id_statut_ancien: doleance[0].id_statut,
+        id_statut_nouveau: idStatutNouvelle,
+        commentaire: `Doléance retournée au central - Motif: ${motifText}`
+      });
+
+      await connection.commit();
+
+      res.json({
+        success: true,
+        message: `Doléance ${doleance[0].reference} retournée au central avec succès`
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Return doleance error:', error);
+    res.status(500).json({ success: false, message: 'Erreur lors du retour: ' + error.message });
+  }
+};
+
 // ========== EXPORTS ==========
 module.exports = {
   createDoleance,
@@ -1141,5 +1201,6 @@ module.exports = {
   getPiecesJointesByReference,
   getSuggestions,
   getStatsOverview,
-  getHistorique
+  getHistorique,
+  retournerDoleance
 };

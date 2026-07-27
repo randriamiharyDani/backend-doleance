@@ -36,7 +36,8 @@ const {
     getSuggestions,
     getStatsOverview,
     getDoleancesAssignedLocations,
-    getHistorique
+    getHistorique,
+    retournerDoleance
 } = require('../controllers/doleanceController');
 const { upload } = require('../models/pieceJointeModel');
 
@@ -101,6 +102,9 @@ router.get('/en-attente', isAgentCentral, getDoleancesEnAttenteTransfert);
 
 // Route pour transférer une doléance (agent central uniquement)
 router.post('/:id/transfert-central', isAgentCentral, transfererDoleanceCentral);
+
+// Route pour retourner une doléance au central (agents de direction uniquement)
+router.post('/:id/retourner', authorize('agent', 'chef_service', 'directeur', 'administrateur_systeme', 'agent_central', 'administrateur'), retournerDoleance);
 
 // ========== CRUD DOLÉANCES ==========
 // Récupérer toutes les doléances (admin et agent central)

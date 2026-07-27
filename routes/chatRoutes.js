@@ -271,15 +271,9 @@ router.post('/calls/start', protect, async (req, res) => {
     const [rows] = await pool.execute('SELECT * FROM chat_calls WHERE id = ?', [result.insertId]);
     const call = rows[0];
 
-    // Émettre via Socket.IO
+    // Émettre via Socket.IO pour notifier l'appel entrant
     const io = req.app.get('io');
     if (io) {
-      io.to(`user_${callee_id}`).emit('incoming-call', {
-        callId: call.id,
-        callerId,
-        callerName: `${req.user.prenom || ''} ${req.user.nom || ''}`.trim(),
-        callType: call_type,
-      });
       io.to(`user_${callee_id}`).emit('call-invite', {
         callId: call.id,
         callerId,
