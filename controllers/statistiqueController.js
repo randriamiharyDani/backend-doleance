@@ -581,6 +581,7 @@ const getTauxSatisfaction = async (req, res) => {
 };
 
 // Export des statistiques
+const ExcelJS = require('exceljs');
 const exportStats = async (req, res) => {
   try {
     const { format = 'json' } = req.params;
@@ -625,21 +626,133 @@ const exportStats = async (req, res) => {
       params
     );
 
-    if (format === 'csv') {
-      const csvRows = [];
-      const headers = ['Date', 'Total', 'En cours', 'Résolues', 'Urgentes'];
-      csvRows.push(headers.join(','));
+    const filename = `statistiques_CUA_${new Date().toISOString().slice(0, 10)}`;
 
-      for (const stat of stats) {
-        csvRows.push([stat.date, stat.total, stat.en_cours, stat.resolues, stat.urgentes].join(','));
+    switch ((format || '').toLowerCase()) {
+
+      case 'csv': {
+        const sep = ';';
+        const eol = '\r\n';
+        const now = new Date();
+        const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+        let csv = '';
+        csv += `"Rapport des Statistiques — Commune Urbaine d'Antananarivo"${eol}`;
+        csv += `"Exporté le ${dateStr}"${eol}${eol}`;
+        csv += `"Date"${sep}"Total"${sep}"En cours"${sep}"Résolues"${sep}"Urgentes"${eol}`;
+        for (const stat of stats) {
+          csv += `"${stat.date}"${sep}${stat.total}${sep}${stat.en_cours}${sep}${stat.resolues}${sep}${stat.urgentes}${eol}`;
+        }
+        const bom = '\uFEFF';
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+        return res.send(bom + csv);
       }
 
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename=statistiques.csv');
-      return res.send(csvRows.join('\n'));
-    }
+      case 'xlsx': {
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'DOLEANCE CUA';
+        workbook.created = new Date();
 
-    res.json({ success: true, data: stats });
+        const ws = workbook.addWorksheet('Statistiques');
+
+        // Title row
+        ws.mergeCells(1, 1, 1, 5);
+        const titleCell = ws.getCell(1, 1);
+        titleCell.value = "Rapport des Statistiques — Commune Urbaine d'Antananarivo";
+        titleCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(1).height = 36;
+
+        // Subtitle row
+        ws.mergeCells(2, 1, 2, 5);
+        const subCell = ws.getCell(2, 1);
+        const now = new Date();
+        const dateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+        subCell.value = `Exporté le ${dateStr} — ${stats.length} jour${stats.length > 1 ? 's' : ''}`;
+        subCell.font = { name: 'Calibri', size: 11, italic: true, color: { argb: 'FF6B7280' } };
+        subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getRow(2).height = 24;
+
+        // Header row (row 4)
+        const headers = ['Date', 'Total', 'En cours', 'Résolues', 'Urgentes'];
+        const headerRow = ws.getRow(4);
+        headers.forEach((h, i) => {
+          const cell = headerRow.getCell(i + 1);
+          cell.value = h;
+          cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+            left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+            bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+            right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          };
+        });
+        headerRow.height = 22;
+
+        // Auto filter
+        if (stats.length > 0) {
+          ws.autoFilter = {
+            from: { row: 4, column: 1 },
+            to: { row: 4 + stats.length, column: 5 }
+          };
+        }
+
+        // Data rows
+        stats.forEach((stat, i) => {
+          const row = ws.getRow(i + 5);
+          row.getCell(1).value = stat.date;
+          row.getCell(2).value = stat.total;
+          row.getCell(3).value = stat.en_cours;
+          row.getCell(4).value = stat.resolues;
+          row.getCell(5).value = stat.urgentes;
+          for (let c = 1; c <= 5; c++) {
+            const cell = row.getCell(c);
+            cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1F2937' } };
+            cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'left' : 'center' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+              right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            };
+          }
+          if (i % 2 === 1) {
+            for (let c = 1; c <= 5; c++) {
+              row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+            }
+          }
+          row.height = 20;
+        });
+
+        // Column widths
+        ws.getColumn(1).width = 16;
+        ws.getColumn(2).width = 14;
+        ws.getColumn(3).width = 16;
+        ws.getColumn(4).width = 16;
+        ws.getColumn(5).width = 14;
+
+        // Freeze header
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+        ws.pageSetup.printTitlesRow = '1:4';
+        ws.pageSetup.orientation = 'landscape';
+        ws.pageSetup.fitToPage = true;
+        ws.pageSetup.fitToWidth = 1;
+        ws.pageSetup.paperSize = 9;
+        ws.pageSetup.margins = { top: 0.6, bottom: 0.6, left: 0.4, right: 0.4, header: 0.3, footer: 0.3 };
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+        res.setHeader('Content-Length', buffer.byteLength);
+        return res.send(buffer);
+      }
+
+      default:
+        return res.json({ success: true, data: stats });
+    }
   } catch (error) {
     console.error('Export stats error:', error);
     res.status(500).json({
