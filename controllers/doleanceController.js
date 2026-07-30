@@ -643,6 +643,11 @@ const createDoleance = async (req, res) => {
 
       await connection.commit();
 
+      notificationController.notifyNewDoleance(req, {
+        id_doleance, reference, titre, id_direction: null,
+        citoyenNom: `${prenom_citoyen} ${nom_citoyen}`
+      }).catch(err => console.error('Erreur notification création:', err));
+
       res.status(201).json({
         success: true,
         message: 'Doléance créée avec succès',

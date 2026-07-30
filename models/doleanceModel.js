@@ -159,7 +159,9 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
     SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
            CONCAT(ct.nom, ' ', ct.prenom) as citoyen_nom,
            ct.email as citoyen_email, ct.telephone as citoyen_telephone,
+           ct.adresse as citoyen_adresse,
            dir.nom_direction,
+           q.nom_quartier, a.nom_arrondissement,
            lt.motif as motif_transfert, lt.date_transfert
     FROM doleances d
     LEFT JOIN statuts s ON d.id_statut = s.id_statut
@@ -167,6 +169,8 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
+    LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
+    LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
     LEFT JOIN (
       SELECT t1.* FROM transferts t1
       INNER JOIN (SELECT id_doleance, MAX(date_transfert) as max_date FROM transferts GROUP BY id_doleance) t2

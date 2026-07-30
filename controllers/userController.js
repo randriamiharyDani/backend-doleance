@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const { pool } = require('../config/database');
 const utilisateurModel = require('../models/utilisateurModel');
 const logModel = require('../models/logModel');
+const notificationController = require('./notificationController');
 
 const getUsers = async (req, res) => {
   try {
@@ -74,6 +75,8 @@ const createUser = async (req, res) => {
 
     console.log('✅ Utilisateur créé avec succès, ID:', insertId);
 
+    notificationController.notifyUserModification(insertId, `${prenom} ${nom}`, 'créé').catch(() => {});
+
     res.status(201).json({
       success: true,
       message: 'Utilisateur créé avec succès',
@@ -135,6 +138,8 @@ const updateUser = async (req, res) => {
     await utilisateurModel.update(id, fields);
 
     const updatedUser = await utilisateurModel.findById(id);
+
+    notificationController.notifyUserModification(id, `${updatedUser[0].prenom} ${updatedUser[0].nom}`, 'modifié').catch(() => {});
 
     res.json({
       success: true,
@@ -219,6 +224,8 @@ const deleteUser = async (req, res) => {
 
     console.log(`✅ Utilisateur "${user[0].prenom} ${user[0].nom}" supprimé définitivement avec succès`);
 
+    notificationController.notifyUserModification(id, `${user[0].prenom} ${user[0].nom}`, 'supprimé').catch(() => {});
+
     res.json({
       success: true,
       message: `Utilisateur "${user[0].prenom} ${user[0].nom}" a été supprimé définitivement`
@@ -260,6 +267,8 @@ const toggleActif = async (req, res) => {
 
     await utilisateurModel.toggleActif(id, actif);
 
+    notificationController.notifyUserModification(id, `${user[0].prenom} ${user[0].nom}`, actif ? 'activé' : 'désactivé').catch(() => {});
+
     res.json({
       success: true,
       message: `Utilisateur ${actif ? 'activé' : 'désactivé'} avec succès`
@@ -292,6 +301,8 @@ const resetPassword = async (req, res) => {
     await utilisateurModel.updatePassword(id, hashedPassword);
 
     const users = await utilisateurModel.findById(id);
+
+    notificationController.notifyPasswordReset(id, users[0].email).catch(() => {});
 
     res.json({
       success: true,
