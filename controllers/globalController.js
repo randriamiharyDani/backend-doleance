@@ -318,11 +318,11 @@ const getCategorieById = async (req, res) => {
 
 const createCategorie = async (req, res) => {
   try {
-    const { nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module } = req.body;
+    const { nom_categorie, nom_malgache, description, description_malagasy, direction_concernee, id_direction, couleur, icone, module } = req.body;
     if (!nom_categorie) {
       return res.status(400).json({ success: false, message: 'Le nom de la catégorie est requis' });
     }
-    const id = await referenceModel.createCategorie({ nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module });
+    const id = await referenceModel.createCategorie({ nom_categorie, nom_malgache, description, description_malagasy, direction_concernee, id_direction, couleur, icone, module });
     res.status(201).json({ success: true, data: { id_categorie: id } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

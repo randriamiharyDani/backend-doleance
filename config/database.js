@@ -458,6 +458,7 @@ const runMigrations = async () => {
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS supprime TINYINT(1) DEFAULT 0 AFTER date_mise_a_jour`,
     `ALTER TABLE doleances ADD COLUMN IF NOT EXISTS date_suppression TIMESTAMP NULL AFTER supprime`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS nom_malgache VARCHAR(200) NULL AFTER nom_categorie`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS description_malagasy TEXT NULL AFTER description`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS direction_concernee VARCHAR(200) NULL AFTER description`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers') DEFAULT 'CUA' AFTER direction_concernee`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`,
