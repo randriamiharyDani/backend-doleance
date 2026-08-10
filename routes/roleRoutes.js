@@ -1,7 +1,7 @@
 // routes/roleRoutes.js
 const express = require('express');
 const router = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requirePermission } = require('../middleware/authMiddleware');
 const {
     getRoles,
     getRoleById,
@@ -18,16 +18,16 @@ const {
 router.use(protect);
 
 // ========== ROUTES DE LECTURE ==========
-router.get('/', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRoles);
-router.get('/hierarchy', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRoleHierarchy);
-router.get('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRoleById);
-router.get('/:id/permissions', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getRolePermissions);
+router.get('/', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), getRoles);
+router.get('/hierarchy', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), getRoleHierarchy);
+router.get('/:id', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), getRoleById);
+router.get('/:id/permissions', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), getRolePermissions);
 
 // ========== ROUTES D'ÉCRITURE ==========
-router.post('/init', authorize('administrateur_systeme', 'administrateur', 'agent_central'), initDefaultRoles);
-router.post('/', authorize('administrateur_systeme', 'administrateur', 'agent_central'), createRole);
-router.put('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateRole);
-router.delete('/:id', authorize('administrateur_systeme', 'administrateur', 'agent_central'), deleteRole);
-router.put('/:id/permissions', authorize('administrateur_systeme', 'administrateur', 'agent_central'), updateRolePermissions);
+router.post('/init', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), initDefaultRoles);
+router.post('/', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), createRole);
+router.put('/:id', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), updateRole);
+router.delete('/:id', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), deleteRole);
+router.put('/:id/permissions', requirePermission('users', 'manage_roles', 'administrateur_systeme', 'administrateur', 'agent_central'), updateRolePermissions);
 
 module.exports = router;

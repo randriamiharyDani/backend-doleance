@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, requirePermission } = require('../middleware/authMiddleware');
 const {
     getDashboardStats,
     getStatsByCategorie,
@@ -30,15 +30,15 @@ router.get('/evolution-temporelle', getEvolutionTemporelle);
 router.get('/temps-traitement', getTempsTraitementMoyen);
 
 // ========== ROUTES ADMINISTRATION (admin système et administrateur uniquement) ==========
-router.get('/by-categorie', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByCategorie);
+router.get('/by-categorie', requirePermission('doleances', 'stats_view', 'administrateur_systeme', 'administrateur', 'agent_central'), getStatsByCategorie);
 router.get('/directions', getStatsByDirection);
-router.get('/by-priorite', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByPriorite);
-router.get('/by-quartier', authorize('administrateur_systeme', 'administrateur', 'agent_central'), getStatsByQuartier);
+router.get('/by-priorite', requirePermission('doleances', 'stats_view', 'administrateur_systeme', 'administrateur', 'agent_central'), getStatsByPriorite);
+router.get('/by-quartier', requirePermission('doleances', 'stats_view', 'administrateur_systeme', 'administrateur', 'agent_central'), getStatsByQuartier);
 
 // ========== ROUTES PERFORMANCE (tous les utilisateurs authentifiés) ==========
 router.get('/performance-agents', getPerformanceAgents);
 
 // ========== ROUTES D'EXPORT (admin système et administrateur uniquement) ==========
-router.post('/export/:format', authorize('administrateur_systeme', 'administrateur'), exportStats);
+router.post('/export/:format', requirePermission('rapports', 'export', 'administrateur_systeme', 'administrateur'), exportStats);
 
 module.exports = router;

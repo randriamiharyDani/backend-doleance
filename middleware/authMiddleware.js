@@ -36,7 +36,7 @@ const protect = async (req, res, next) => {
       
       // Récupérer l'utilisateur depuis la base de données
       const [users] = await pool.execute(
-        `SELECT u.*, r.nom_role as role_nom 
+        `SELECT u.*, r.nom_role as role_nom, r.permissions as role_permissions 
          FROM utilisateurs u 
          LEFT JOIN roles r ON u.id_role = r.id_role 
          WHERE u.id_utilisateur = ? AND u.actif = 1`,
@@ -52,6 +52,8 @@ const protect = async (req, res, next) => {
       
       // Ajouter l'utilisateur à la requête
       req.user = users[0];
+      // Charger les permissions du rôle (JSON de la colonne permissions)
+      req.user.permissions = parsePermissions(users[0].role_permissions);
       console.log(`🔐 Utilisateur authentifié: ${req.user.email} (${req.user.role_nom || 'rôle inconnu'})`);
       next();
     } catch (error) {
@@ -346,6 +348,88 @@ const authorizeDoleance = () => {
   };
 };
 
+// ========== HELPERS PERMISSIONS ==========
+
+// Convertit la colonne JSON "permissions" en objet (gère string JSON ou objet)
+const parsePermissions = (value) => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  if (typeof value === 'object') {
+    return value;
+  }
+  return {};
+};
+
+// Vérifie si un objet de permissions contient une permission donnée
+// Format attendu : { doleances: ['view_all', 'transfer', ...], all: ['*'] }
+// - "all": ["*"] => super accès (toutes permissions)
+// - module manquant ou action absente => refus
+const hasPermission = (permissions, module, action) => {
+  const perms = parsePermissions(permissions);
+  if (!perms || typeof perms !== 'object') return false;
+
+  // Accès total via all: ['*'] (compatible aussi avec all: '*')
+  const allPerms = perms.all;
+  if (allPerms === '*' || allPerms === true) return true;
+  if (Array.isArray(allPerms) && (allPerms.includes('*') || allPerms.includes(action))) {
+    return true;
+  }
+
+  // Permissions par module
+  const modulePerms = perms[module];
+  if (modulePerms === true || modulePerms === '*') return true;
+  if (Array.isArray(modulePerms)) {
+    return modulePerms.includes('*') || modulePerms.includes(action);
+  }
+
+  return false;
+};
+
+// Récupère les permissions effectives d'un utilisateur (rôle + permissions)
+const getUserPermissions = (user) => {
+  return parsePermissions(user?.permissions);
+};
+
+// ========== MIDDLEWARE DE PERMISSION ==========
+// requirePermission('doleances', 'transfer', 'agent_central', 'administrateur_systeme')
+// Vérifie la permission demandée; sinon, si le rôle est dans la liste fallback, autorise.
+const requirePermission = (module, action, ...fallbackRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Non autorisé' });
+    }
+
+    const userRole = req.user.role_nom || req.user.nom_role;
+
+    // 1) Autorisation via permissions
+    if (hasPermission(req.user.permissions, module, action)) {
+      return next();
+    }
+
+    // 2) Fallback rôles explicites (compatibilité avec les listes de rôles existantes)
+    if (fallbackRoles.length > 0 && fallbackRoles.includes(userRole)) {
+      return next();
+    }
+
+    // 3) Fallback rôles admin (accès total historique)
+    const adminRoles = ['administrateur_systeme', 'administrateur', 'agent_central'];
+    if (adminRoles.includes(userRole)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `Accès interdit. Permission requise: ${module}.${action}. Votre rôle: ${userRole || 'non défini'}`
+    });
+  };
+};
+
 // ========== EXPORTS ==========
 module.exports = { 
   protect, 
@@ -355,5 +439,9 @@ module.exports = {
   isAgentCentral,
   isAdmin,
   isSuperAdmin,
-  authorizeDoleance
+  authorizeDoleance,
+  parsePermissions,
+  hasPermission,
+  getUserPermissions,
+  requirePermission
 };

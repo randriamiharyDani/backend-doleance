@@ -508,8 +508,10 @@ const getRoleHierarchy = async (req, res) => {
 };
 
 // Vérifier si un utilisateur a une permission spécifique
+// permission attendu : "module.action" (ex: "doleances.transfer") ou { module, action }
 const checkPermission = async (userId, permission) => {
   try {
+    const { hasPermission } = require('../middleware/authMiddleware');
     const rows = await roleModel.getPermissionsByUserId(userId);
 
     if (rows.length === 0) return false;
@@ -523,8 +525,17 @@ const checkPermission = async (userId, permission) => {
       }
     }
 
-    // Vérifier si l'utilisateur a la permission
-    return permissions?.all?.includes('*') || permissions?.[permission] === true;
+    if (typeof permission === 'string') {
+      const [module, action] = permission.split('.');
+      if (!module || !action) return false;
+      return hasPermission(permissions, module, action);
+    }
+
+    if (permission && permission.module && permission.action) {
+      return hasPermission(permissions, permission.module, permission.action);
+    }
+
+    return false;
   } catch (error) {
     console.error('Check permission error:', error);
     return false;

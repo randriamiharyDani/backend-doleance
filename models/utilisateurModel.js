@@ -8,7 +8,7 @@ const findByEmail = async (email) => {
 const findByEmailWithPassword = async (email) => {
   const passwordColumn = await getPasswordColumn();
   const [rows] = await pool.execute(
-    `SELECT u.*, r.nom_role, u.${passwordColumn} as mot_de_passe
+    `SELECT u.*, r.nom_role, r.permissions as role_permissions, u.${passwordColumn} as mot_de_passe
      FROM utilisateurs u
      LEFT JOIN roles r ON u.id_role = r.id_role
      WHERE u.email = ?`,
@@ -21,7 +21,7 @@ const findById = async (id) => {
   const [rows] = await pool.execute(
     `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.telephone,
             u.actif, u.date_creation, u.derniere_connexion,
-            r.id_role, r.nom_role as role_nom,
+            r.id_role, r.nom_role as role_nom, r.permissions as role_permissions,
             d.id_direction, d.nom_direction
      FROM utilisateurs u
      LEFT JOIN roles r ON u.id_role = r.id_role

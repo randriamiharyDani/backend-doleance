@@ -36,6 +36,16 @@ const login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRE || '24h' }
     );
 
+    // Extraire les permissions du rôle pour l'UI
+    let permissions = {};
+    try {
+      permissions = user.role_permissions
+        ? (typeof user.role_permissions === 'string' ? JSON.parse(user.role_permissions) : user.role_permissions)
+        : {};
+    } catch (e) {
+      permissions = {};
+    }
+
     await utilisateurModel.updateLastConnection(user.id_utilisateur);
 
     try {
@@ -54,7 +64,8 @@ const login = async (req, res) => {
       user: {
         id_utilisateur: user.id_utilisateur, nom: user.nom, prenom: user.prenom,
         email: user.email, role: user.nom_role, id_direction: user.id_direction,
-        telephone: user.telephone, actif: user.actif
+        telephone: user.telephone, actif: user.actif,
+        permissions: permissions
       }
     });
   } catch (error) {
@@ -98,7 +109,16 @@ const getProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Profil non trouvé' });
     }
 
-    res.json({ success: true, data: users[0] });
+    let permissions = {};
+    try {
+      permissions = users[0].role_permissions
+        ? (typeof users[0].role_permissions === 'string' ? JSON.parse(users[0].role_permissions) : users[0].role_permissions)
+        : {};
+    } catch (e) {
+      permissions = {};
+    }
+
+    res.json({ success: true, data: { ...users[0], permissions } });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ success: false, message: 'Erreur lors du chargement du profil: ' + error.message });

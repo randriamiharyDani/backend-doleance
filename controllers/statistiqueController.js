@@ -270,24 +270,34 @@ const getStatsByStatut = async (req, res) => {
     const userDirectionId = req.user.id_direction;
 
     let directionFilter = '';
+    let totalFilter = '';
     let params = [];
 
     if (userRole !== 'administrateur_systeme' && userRole !== 'administrateur' && userRole !== 'agent_central') {
       if (userDirectionId) {
-        directionFilter = ' AND d.id_direction = ?';
-        params.push(userDirectionId);
+        directionFilter = ' AND id_direction = ?';
+        totalFilter = ' AND id_direction = ?';
+        params.push(userDirectionId, userDirectionId);
       } else {
-        directionFilter = ' AND d.id_utilisateur_assignee = ?';
-        params.push(userId);
+        directionFilter = ' AND id_utilisateur_assignee = ?';
+        totalFilter = ' AND id_utilisateur_assignee = ?';
+        params.push(userId, userId);
       }
     }
 
     const [stats] = await pool.execute(
       `SELECT s.id_statut, s.nom_statut, s.couleur,
               COUNT(d.id_doleance) as count,
-              ROUND(COUNT(d.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances), 0), 2) as percentage
+              ROUND(COUNT(d.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances WHERE 1=1 ${totalFilter}), 0), 2) as percentage
        FROM statuts s
-       LEFT JOIN doleances d ON s.id_statut = d.id_statut ${directionFilter}
+       LEFT JOIN (
+         SELECT id_doleance,
+                CASE WHEN (id_priorite = 4 OR id_statut = 9) AND id_statut NOT IN (5, 6)
+                     THEN 9 ELSE id_statut END AS bucket_id
+         FROM doleances
+         WHERE 1=1 ${directionFilter}
+       ) d ON d.bucket_id = s.id_statut
+       WHERE s.nom_statut <> 'transfert'
        GROUP BY s.id_statut
        ORDER BY s.ordre`,
       params

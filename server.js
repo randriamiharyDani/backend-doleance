@@ -36,6 +36,27 @@ const editingDoleances = {};
 const onlineUsers = new Map(); // userId -> Map of socketId -> { userName, userRole, connectedAt }
 
 // ================================
+// Socket.IO - Authentification JWT au handshake
+// ================================
+const jwt = require('jsonwebtoken');
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    return next(new Error('Token d\'authentification requis'));
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.userId = decoded.id_utilisateur || decoded.id;
+    socket.userName = decoded.nom ? `${decoded.prenom || ''} ${decoded.nom}`.trim() : 'Utilisateur';
+    socket.userRole = decoded.role_nom || '';
+    next();
+  } catch (err) {
+    return next(new Error('Token invalide ou expiré'));
+  }
+});
+
+// ================================
 // Security middleware
 // ================================
 
@@ -170,25 +191,19 @@ function broadcastOnlineUsers() {
 // ================================
 
 io.on('connection', (socket) => {
-  console.log(`🔌 Nouvelle connexion WebSocket : ${socket.id}`);
+  console.log(`🔌 Nouvelle connexion WebSocket : ${socket.id} — userId: ${socket.userId}`);
 
-  // Authentification
-  socket.on('authenticate', (token) => {
-    try {
-      const jwt = require('jsonwebtoken');
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded.id || decoded.id_utilisateur;
-      socket.userName = decoded.nom || decoded.userName || 'Utilisateur';
-      socket.join(`user_${socket.userId}`);
-      console.log(`✅ Utilisateur ${socket.userId} authentifié`);
-    } catch (error) {
-      console.error('❌ Erreur authentification WebSocket :', error.message);
-    }
-  });
+  // Le token JWT est déjà validé par le middleware io.use()
+  // socket.userId, socket.userName, socket.userRole sont déjà définis
+  socket.join(`user_${socket.userId}`);
 
   // ========== GESTION DES UTILISATEURS EN LIGNE ==========
   socket.on('user-connected', (data) => {
-    const { userId, userName, userRole } = data;
+    // Utiliser le userId du JWT (déjà validé), ignorer celui du client
+    const userId = socket.userId;
+    const userName = socket.userName;
+    const userRole = socket.userRole;
+
     if (!userId) return;
 
     const numericUserId = Number(userId);
@@ -201,10 +216,6 @@ io.on('connection', (socket) => {
       userRole,
       connectedAt: new Date()
     });
-
-    socket.userId = numericUserId;
-    socket.userName = userName;
-    socket.join(`user_${numericUserId}`);
 
     console.log(`👤 Utilisateur connecté : ${userName} (${numericUserId}) — socket ${socket.id}`);
 
@@ -410,9 +421,9 @@ io.on('connection', (socket) => {
   });
 
   // ========== CHAT - MESSAGERIE ==========
-  socket.on('chat-join', (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`💬 User ${userId} joined chat room`);
+  socket.on('chat-join', () => {
+    socket.join(`user_${socket.userId}`);
+    console.log(`💬 User ${socket.userId} joined chat room`);
   });
 
   socket.on('chat-message', (data) => {
@@ -453,18 +464,22 @@ io.on('connection', (socket) => {
   });
 
   socket.on('call-accept', (data) => {
-    const { callerId, call_id, callId } = data;
-    const targetId = callerId || call_id;
+    const { callerId, caller_id, call_id, callId } = data;
+    const targetId = callerId || caller_id;
     const cId = callId || call_id;
-    io.to(`user_${targetId}`).emit('call-accept', { callId: cId, calleeId: socket.userId });
+    if (targetId) {
+      io.to(`user_${targetId}`).emit('call-accept', { callId: cId, calleeId: socket.userId });
+    }
     console.log(`📞 Appel ${cId} accepté par ${socket.userId}`);
   });
 
   socket.on('call-reject', (data) => {
-    const { callerId, call_id, callId } = data;
-    const targetId = callerId || call_id;
+    const { callerId, caller_id, call_id, callId } = data;
+    const targetId = callerId || caller_id;
     const cId = callId || call_id;
-    io.to(`user_${targetId}`).emit('call-reject', { callId: cId, calleeId: socket.userId });
+    if (targetId) {
+      io.to(`user_${targetId}`).emit('call-reject', { callId: cId, calleeId: socket.userId });
+    }
     console.log(`📞 Appel ${cId} refusé par ${socket.userId}`);
   });
 

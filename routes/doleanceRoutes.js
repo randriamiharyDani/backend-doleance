@@ -1,7 +1,7 @@
 // routes/doleanceRoutes.js
 const express = require('express');
 const router = express.Router();
-const { protect, authorize, isAgentCentral, authorizeDoleance } = require('../middleware/authMiddleware');
+const { protect, requirePermission, isAgentCentral, authorizeDoleance } = require('../middleware/authMiddleware');
 const {
     createDoleance,
     getDoleances,
@@ -77,7 +77,8 @@ router.get('/by-citizen/:identifiant', getDoleancesByCitizenId);
 router.use(protect);
 
 // ========== HISTORIQUE ==========
-router.get('/historique', authorize(
+router.get('/historique', requirePermission(
+    'doleances', 'view_all',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -88,7 +89,8 @@ router.get('/historique', authorize(
 
 // ========== DOLÉANCES BACKOFFICE ==========
 // Route principale backoffice avec filtres
-router.get('/backoffice', authorize(
+router.get('/backoffice', requirePermission(
+    'doleances', 'view_all',
     'administrateur_systeme', 
     'agent_central', 
     'administrateur', 
@@ -104,14 +106,15 @@ router.get('/en-attente', isAgentCentral, getDoleancesEnAttenteTransfert);
 router.post('/:id/transfert-central', isAgentCentral, transfererDoleanceCentral);
 
 // Route pour retourner une doléance au central (agents de direction uniquement)
-router.post('/:id/retourner', authorize('agent', 'chef_service', 'directeur', 'administrateur_systeme', 'agent_central', 'administrateur'), retournerDoleance);
+router.post('/:id/retourner', requirePermission('doleances', 'update_status', 'agent', 'chef_service', 'directeur', 'administrateur_systeme', 'agent_central', 'administrateur'), retournerDoleance);
 
 // ========== CRUD DOLÉANCES ==========
 // Récupérer toutes les doléances (admin et agent central)
-router.get('/', authorize('administrateur_systeme', 'agent_central', 'administrateur'), getDoleances);
+router.get('/', requirePermission('doleances', 'view_all', 'administrateur_systeme', 'agent_central', 'administrateur'), getDoleances);
 
 // Récupérer une doléance par ID
-router.get('/:id', authorize(
+router.get('/:id', requirePermission(
+    'doleances', 'view_all',
     'administrateur_systeme', 
     'agent_central', 
     'administrateur', 
@@ -121,14 +124,16 @@ router.get('/:id', authorize(
 ), authorizeDoleance(), getDoleanceById);
 
 // Modifier une doléance (titre, description, catégorie, etc.)
-router.put('/:id', authorize(
+router.put('/:id', requirePermission(
+    'doleances', 'update',
     'administrateur_systeme',
     'agent_central',
     'administrateur'
 ), updateDoleance);
 
 // Mettre à jour le statut
-router.put('/:id/statut', authorize(
+router.put('/:id/statut', requirePermission(
+    'doleances', 'update_status',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -137,7 +142,8 @@ router.put('/:id/statut', authorize(
     'agent'
 ), authorizeDoleance(), updateStatut);
 
-router.patch('/:id/statut', authorize(
+router.patch('/:id/statut', requirePermission(
+    'doleances', 'update_status',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -147,14 +153,16 @@ router.patch('/:id/statut', authorize(
 ), authorizeDoleance(), updateStatut);
 
 // Mettre à jour la priorité
-router.put('/:id/priorite', authorize(
+router.put('/:id/priorite', requirePermission(
+    'doleances', 'update',
     'administrateur_systeme',
     'agent_central',
     'administrateur'
 ), updatePriorite);
 
 // Ajouter une réponse
-router.post('/:id/reponses', authorize(
+router.post('/:id/reponses', requirePermission(
+    'doleances', 'add_response',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -164,11 +172,12 @@ router.post('/:id/reponses', authorize(
 ), authorizeDoleance(), addReponse);
 
 // Supprimer une doléance (admin et agent central uniquement)
-router.delete('/:id', authorize('agent_central', 'administrateur_systeme', 'administrateur'), deleteDoleance);
+router.delete('/:id', requirePermission('doleances', 'delete', 'agent_central', 'administrateur_systeme', 'administrateur'), deleteDoleance);
 
 // ========== PIÈCES JOINTES ==========
 // Upload de pièces jointes
-router.post('/upload', authorize(
+router.post('/upload', requirePermission(
+    'doleances', 'add_response',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -178,7 +187,8 @@ router.post('/upload', authorize(
 ), upload, handleUploadPiecesJointes);
 
 // Récupérer les pièces jointes d'une doléance
-router.get('/:id/pieces-jointes', authorize(
+router.get('/:id/pieces-jointes', requirePermission(
+    'doleances', 'view_all',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -188,7 +198,8 @@ router.get('/:id/pieces-jointes', authorize(
 ), authorizeDoleance(), getPiecesJointes);
 
 // Télécharger une pièce jointe spécifique
-router.get('/pieces/:id/download', authorize(
+router.get('/pieces/:id/download', requirePermission(
+    'doleances', 'view_all',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
@@ -198,10 +209,11 @@ router.get('/pieces/:id/download', authorize(
 ), downloadPieceJointe);
 
 // Supprimer une pièce jointe (admin et agent central uniquement)
-router.delete('/pieces/:id', authorize('agent_central', 'administrateur_systeme', 'administrateur'), deletePieceJointe);
+router.delete('/pieces/:id', requirePermission('doleances', 'delete', 'agent_central', 'administrateur_systeme', 'administrateur'), deletePieceJointe);
 
 // ========== STATISTIQUES ==========
-router.get('/stats/overview', authorize(
+router.get('/stats/overview', requirePermission(
+    'doleances', 'stats_view',
     'administrateur_systeme',
     'agent_central',
     'administrateur',
