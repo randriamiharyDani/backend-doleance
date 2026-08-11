@@ -527,11 +527,13 @@ const getPerformanceAgents = async (req, res) => {
 const getStatsByQuartier = async (req, res) => {
   try {
     const [stats] = await pool.execute(
-      `SELECT q.id_quartier, q.nom_quartier,
+      `SELECT NULLIF(TRIM(d.quartier), '') as nom_quartier,
               COUNT(d.id_doleance) as count
-       FROM quartiers q
-       LEFT JOIN doleances d ON q.id_quartier = d.id_quartier
-       GROUP BY q.id_quartier
+       FROM doleances d
+       WHERE (d.supprime IS NULL OR d.supprime = 0)
+         AND d.quartier IS NOT NULL
+         AND TRIM(d.quartier) <> ''
+       GROUP BY TRIM(d.quartier)
        ORDER BY count DESC
        LIMIT 20`,
       []

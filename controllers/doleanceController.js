@@ -584,7 +584,7 @@ const createDoleance = async (req, res) => {
     const { 
       identifiant_citoyen,
       nom_citoyen, prenom_citoyen, telephone_citoyen, email_citoyen, adresse_citoyen,
-      titre, description, id_categorie, id_quartier,
+      titre, description, id_categorie, quartier,
       latitude, longitude, lieu_exact, suggestions, module
     } = req.body;
 
@@ -624,11 +624,11 @@ const createDoleance = async (req, res) => {
       const defaultStatut = isSapeursPompiers ? 9 : 1;
       const defaultPriorite = isSapeursPompiers ? 4 : 2;
 
-      const quartierValue = id_quartier ? Number(id_quartier) : null;
+      const quartierValue = quartier ? String(quartier).trim() : null;
 
       const id_doleance = await doleanceModel.create(connection, {
         reference, titre, description, id_citoyen, id_categorie,
-        id_quartier: quartierValue, id_direction: null, id_statut: defaultStatut,
+        quartier: quartierValue, id_direction: null, id_statut: defaultStatut,
         id_priorite: defaultPriorite,
         latitude: latitude || null, longitude: longitude || null, lieu_exact: lieu_exact || null,
         suggestions: suggestions || null
@@ -883,7 +883,7 @@ const updatePriorite = async (req, res) => {
 const updateDoleance = async (req, res) => {
   try {
     const { id } = req.params;
-    const { titre, description, id_categorie, id_quartier, lieu_exact, suggestions, citoyen } = req.body;
+    const { titre, description, id_categorie, id_quartier, quartier, lieu_exact, suggestions, citoyen } = req.body;
 
     const existing = await doleanceModel.findById(id);
     if (existing.length === 0) {
@@ -894,7 +894,8 @@ const updateDoleance = async (req, res) => {
     if (titre !== undefined) doleanceFields.titre = titre;
     if (description !== undefined) doleanceFields.description = description;
     if (id_categorie !== undefined) doleanceFields.id_categorie = Number(id_categorie);
-    if (id_quartier !== undefined) doleanceFields.id_quartier = id_quartier || null;
+    if (quartier !== undefined) doleanceFields.quartier = quartier || null;
+    else if (id_quartier) doleanceFields.id_quartier = id_quartier || null;
     if (lieu_exact !== undefined) doleanceFields.lieu_exact = lieu_exact;
     if (suggestions !== undefined) doleanceFields.suggestions = suggestions;
 

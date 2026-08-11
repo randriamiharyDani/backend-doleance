@@ -221,12 +221,12 @@ const getDoleanceByReference = async (req, res) => {
 
 const createDoleance = async (req, res) => {
   try {
-    const { reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, id_quartier, latitude, longitude } = req.body;
+    const { reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, quartier, latitude, longitude } = req.body;
     const [result] = await pool.execute(
       `INSERT INTO doleances (reference, titre, description, id_citoyen, id_categorie, 
-       id_priorite, id_direction, id_quartier, latitude, longitude, id_statut)
+       id_priorite, id_direction, quartier, latitude, longitude, id_statut)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, id_quartier, latitude, longitude]
+      [reference, titre, description, id_citoyen, id_categorie, id_priorite, id_direction, quartier || null, latitude, longitude]
     );
     res.status(201).json({ success: true, data: { id: result.insertId } });
   } catch (error) {

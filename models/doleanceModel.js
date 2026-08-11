@@ -16,15 +16,14 @@ const findById = async (id) => {
             ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
             ct.email as citoyen_email, ct.telephone as citoyen_telephone,
             ct.adresse as citoyen_adresse,
-            q.nom_quartier, a.nom_arrondissement
+            d.quartier as nom_quartier, q.id_quartier
      FROM doleances d
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
-     LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
+     LEFT JOIN quartiers q ON q.nom_quartier = d.quartier
      WHERE d.id_doleance = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
     [id]
   );
@@ -38,15 +37,14 @@ const findByIdIncludeTrashed = async (id) => {
             ct.nom as citoyen_nom, ct.prenom as citoyen_prenom,
             ct.email as citoyen_email, ct.telephone as citoyen_telephone,
             ct.adresse as citoyen_adresse,
-            q.nom_quartier, a.nom_arrondissement
+            d.quartier as nom_quartier, q.id_quartier
      FROM doleances d
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
      LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
-     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
-     LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
+     LEFT JOIN quartiers q ON q.nom_quartier = d.quartier
      WHERE d.id_doleance = ?`,
     [id]
   );
@@ -55,13 +53,12 @@ const findByIdIncludeTrashed = async (id) => {
 
 const findByReference = async (reference) => {
   const [rows] = await pool.execute(
-    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie, q.nom_quartier,
-            dir.nom_direction
+    `SELECT d.*, s.nom_statut, s.couleur as statut_couleur, p.nom_priorite, p.niveau, c.nom_categorie,
+            d.quartier as nom_quartier, dir.nom_direction
      FROM doleances d
      LEFT JOIN statuts s ON d.id_statut = s.id_statut
      LEFT JOIN priorites p ON d.id_priorite = p.id_priorite
      LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
-     LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
      LEFT JOIN directions dir ON d.id_direction = dir.id_direction
      WHERE d.reference = ? AND (d.supprime IS NULL OR d.supprime = 0)`,
     [reference]
@@ -161,7 +158,7 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
            ct.email as citoyen_email, ct.telephone as citoyen_telephone,
            ct.adresse as citoyen_adresse,
            dir.nom_direction,
-           q.nom_quartier, a.nom_arrondissement,
+           d.quartier as nom_quartier,
            lt.motif as motif_transfert, lt.date_transfert
     FROM doleances d
     LEFT JOIN statuts s ON d.id_statut = s.id_statut
@@ -169,8 +166,6 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
     LEFT JOIN categories_doleance c ON d.id_categorie = c.id_categorie
     LEFT JOIN citoyens ct ON d.id_citoyen = ct.id_citoyen
     LEFT JOIN directions dir ON d.id_direction = dir.id_direction
-    LEFT JOIN quartiers q ON d.id_quartier = q.id_quartier
-    LEFT JOIN arrondissements a ON q.id_arrondissement = a.id_arrondissement
     LEFT JOIN (
       SELECT t1.* FROM transferts t1
       INNER JOIN (SELECT id_doleance, MAX(date_transfert) as max_date FROM transferts GROUP BY id_doleance) t2
@@ -320,15 +315,15 @@ const listEnAttenteTransfert = async ({ page = 1, limit = 10, categorie, search 
   return { data: rows, total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) };
 };
 
-const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, id_quartier, id_direction, id_statut, id_priorite, latitude, longitude, lieu_exact, suggestions }) => {
+const create = async (connection, { reference, titre, description, id_citoyen, id_categorie, quartier, id_direction, id_statut, id_priorite, latitude, longitude, lieu_exact, suggestions }) => {
   const defaultPriorite = id_priorite || 2;
   const [result] = await connection.execute(
     `INSERT INTO doleances 
      (reference, titre, description, id_citoyen, id_categorie, id_priorite, 
-      id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions)
+      quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [reference, titre, description, id_citoyen, Number(id_categorie), defaultPriorite,
-     id_quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions]
+     quartier, id_direction, id_statut, latitude, longitude, lieu_exact, suggestions]
   );
   return result.insertId;
 };
@@ -350,7 +345,11 @@ const updatePriorite = async (id_doleance, id_priorite) => {
 };
 
 const updateDoleance = async (id_doleance, fields) => {
-  const allowed = ['titre', 'description', 'id_categorie', 'id_quartier', 'lieu_exact', 'suggestions'];
+  if (fields.id_quartier !== undefined && fields.quartier === undefined) {
+    const [qRows] = await pool.execute('SELECT nom_quartier FROM quartiers WHERE id_quartier = ?', [fields.id_quartier]);
+    fields.quartier = qRows[0]?.nom_quartier || null;
+  }
+  const allowed = ['titre', 'description', 'id_categorie', 'quartier', 'lieu_exact', 'suggestions'];
   const setClauses = [];
   const values = [];
   for (const key of allowed) {

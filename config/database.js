@@ -259,7 +259,7 @@ const createTables = async () => {
       id_statut INT,
       id_priorite INT,
       id_direction INT,
-      id_quartier INT,
+      quartier TEXT,
       id_utilisateur_assignee INT,
       latitude DECIMAL(10,8),
       longitude DECIMAL(11,8),
@@ -275,7 +275,6 @@ const createTables = async () => {
       FOREIGN KEY (id_statut) REFERENCES statuts(id_statut),
       FOREIGN KEY (id_priorite) REFERENCES priorites(id_priorite),
       FOREIGN KEY (id_direction) REFERENCES directions(id_direction),
-      FOREIGN KEY (id_quartier) REFERENCES quartiers(id_quartier),
       FOREIGN KEY (id_utilisateur_assignee) REFERENCES utilisateurs(id_utilisateur)
     )`,
     
@@ -526,6 +525,39 @@ const runMigrations = async () => {
         console.warn('⚠️ Migration warning:', err.message);
       }
     }
+  }
+
+  // Migration quartier : remplacer id_quartier (FK) par un champ texte libre 'quartier'
+  try {
+    const [fkCols] = await promisePool.execute(`
+      SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doleances' AND COLUMN_NAME = 'id_quartier'
+    `);
+    for (const fk of fkCols) {
+      await promisePool.execute(`ALTER TABLE doleances DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('⚠️ Migration quartier (FK):', err.message);
+  }
+  try {
+    await promisePool.execute(`ALTER TABLE doleances ADD COLUMN quartier TEXT NULL`);
+  } catch (err) {
+    if (err.errno !== 1060) console.warn('⚠️ Migration quartier (colonne):', err.message);
+  }
+  try {
+    await promisePool.execute(`
+      UPDATE doleances d
+      LEFT JOIN quartiers q ON q.id_quartier = d.id_quartier
+      SET d.quartier = q.nom_quartier
+      WHERE d.quartier IS NULL OR d.quartier = ''
+    `).catch(() => {});
+  } catch (err) {
+    console.warn('⚠️ Migration quartier (copie données):', err.message);
+  }
+  try {
+    await promisePool.execute(`ALTER TABLE doleances DROP COLUMN id_quartier`).catch(() => {});
+  } catch (err) {
+    console.warn('⚠️ Migration quartier (drop id_quartier):', err.message);
   }
 
   // Index corbeille
