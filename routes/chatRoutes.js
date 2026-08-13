@@ -8,6 +8,31 @@ const { protect } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+// ==================== MESSAGES SYSTÈME D'APPEL ====================
+function formatDuration(seconds) {
+  const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+// Insère un message système d'appel pour chaque participant (visible dans la conversation, comme Messenger)
+async function addCallEvent(io, call, texts) {
+  const rows = [];
+  for (const viewerId of Object.keys(texts)) {
+    const otherId = String(viewerId) === String(call.caller_id) ? call.callee_id : call.caller_id;
+    const [res] = await pool.execute(
+      'INSERT INTO chat_messages (sender_id, receiver_id, message, is_read) VALUES (?, ?, ?, 1)',
+      [viewerId, otherId, JSON.stringify({ t: 'call', d: texts[viewerId] })]
+    );
+    const [m] = await pool.execute('SELECT * FROM chat_messages WHERE id = ?', [res.insertId]);
+    if (m[0]) {
+      rows.push(m[0]);
+      if (io) io.to(`user_${viewerId}`).emit('new-message', m[0]);
+    }
+  }
+  return rows;
+}
+
 // ==================== MULTER CONFIG ====================
 const chatUploadDir = path.join(__dirname, '../uploads/chat');
 if (!fs.existsSync(chatUploadDir)) {
@@ -284,7 +309,7 @@ router.post('/calls/action', protect, async (req, res) => {
     const userId = req.user.id_utilisateur;
     const { call_id, action } = req.body;
 
-    if (!call_id || !['accept', 'reject', 'end'].includes(action)) {
+    if (!call_id || !['accept', 'reject', 'end', 'fail', 'miss'].includes(action)) {
       return res.status(400).json({ success: false, message: 'Paramètres invalides' });
     }
 
@@ -298,28 +323,97 @@ router.post('/calls/action', protect, async (req, res) => {
 
     if (action === 'accept') {
       await pool.execute(
-        "UPDATE chat_calls SET status = 'accepted' WHERE id = ? AND callee_id = ? AND status = 'ringing'",
+        "UPDATE chat_calls SET status = 'accepted', started_at = NOW() WHERE id = ? AND callee_id = ? AND status = 'ringing'",
         [call_id, userId]
       );
       if (io) {
         io.to(`user_${call.caller_id}`).emit('call-accept', { callId: call_id, calleeId: userId });
       }
     } else if (action === 'reject') {
-      await pool.execute(
-        "UPDATE chat_calls SET status = 'rejected', ended_at = NOW() WHERE id = ? AND callee_id = ?",
+      const [upd] = await pool.execute(
+        "UPDATE chat_calls SET status = 'rejected', ended_at = NOW() WHERE id = ? AND callee_id = ? AND status = 'ringing'",
         [call_id, userId]
       );
       if (io) {
         io.to(`user_${call.caller_id}`).emit('call-reject', { callId: call_id, calleeId: userId });
       }
+      if (upd.affectedRows > 0) {
+        await addCallEvent(io, call, {
+          [call.caller_id]: '🚫 Appel refusé',
+          [call.callee_id]: '🚫 Appel refusé',
+        });
+      }
     } else if (action === 'end') {
-      await pool.execute(
-        "UPDATE chat_calls SET status = 'ended', ended_at = NOW() WHERE id = ? AND (caller_id = ? OR callee_id = ?) AND status != 'ended'",
-        [call_id, userId, userId]
+      if (call.status === 'accepted') {
+        await pool.execute(
+          "UPDATE chat_calls SET status = 'ended', ended_at = NOW() WHERE id = ? AND (caller_id = ? OR callee_id = ?) AND status != 'ended'",
+          [call_id, userId, userId]
+        );
+        const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
+        if (io) {
+          io.to(`user_${otherUserId}`).emit('call-end', { callId: call_id, userId });
+        }
+        const startedAt = call.started_at
+          ? new Date(String(call.started_at).replace(' ', 'T'))
+          : null;
+        const durationSec = startedAt && !isNaN(startedAt.getTime())
+          ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+          : 0;
+        const label = durationSec > 0
+          ? `📞 Appel terminé — ${formatDuration(durationSec)}`
+          : '📞 Appel terminé';
+        await addCallEvent(io, call, {
+          [call.caller_id]: label,
+          [call.callee_id]: label,
+        });
+      } else if (call.status === 'ringing') {
+        const [upd] = await pool.execute(
+          "UPDATE chat_calls SET status = 'ended', ended_at = NOW() WHERE id = ? AND (caller_id = ? OR callee_id = ?) AND status = 'ringing'",
+          [call_id, userId, userId]
+        );
+        const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
+        if (upd.affectedRows > 0) {
+          if (userId === call.caller_id) {
+            // L'appelant a raccroché pendant la sonnerie
+            if (io) io.to(`user_${otherUserId}`).emit('call-missed', { callId: call_id, callerId: userId });
+            await addCallEvent(io, call, {
+              [call.caller_id]: '🔕 Appel annulé',
+              [call.callee_id]: '📵 Appel manqué',
+            });
+          } else {
+            // L'appelé a raccroché pendant la sonnerie
+            if (io) io.to(`user_${otherUserId}`).emit('call-missed', { callId: call_id, calleeId: userId });
+            await addCallEvent(io, call, {
+              [call.caller_id]: '📵 Appel manqué',
+              [call.callee_id]: '🔕 Appel annulé',
+            });
+          }
+        }
+      }
+    } else if (action === 'fail') {
+      const [upd] = await pool.execute(
+        "UPDATE chat_calls SET status = 'ended', ended_at = NOW() WHERE id = ? AND status IN ('accepted', 'ringing')",
+        [call_id]
       );
-      const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
-      if (io) {
-        io.to(`user_${otherUserId}`).emit('call-end', { callId: call_id, userId });
+      if (upd.affectedRows > 0) {
+        const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
+        if (io) io.to(`user_${otherUserId}`).emit('call-failed', { callId: call_id, userId });
+        await addCallEvent(io, call, {
+          [call.caller_id]: '❌ Appel échoué',
+          [call.callee_id]: '❌ Appel échoué',
+        });
+      }
+    } else if (action === 'miss') {
+      const [upd] = await pool.execute(
+        "UPDATE chat_calls SET status = 'missed', ended_at = NOW() WHERE id = ? AND callee_id = ? AND status = 'ringing'",
+        [call_id, userId]
+      );
+      if (upd.affectedRows > 0) {
+        if (io) io.to(`user_${call.caller_id}`).emit('call-missed', { callId: call_id, calleeId: userId });
+        await addCallEvent(io, call, {
+          [call.caller_id]: '📵 Appel manqué',
+          [call.callee_id]: '📵 Appel manqué',
+        });
       }
     }
 
