@@ -64,32 +64,21 @@ router.get('/contacts', protect, async (req, res) => {
         WHERE receiver_id = ? AND is_read = 0
         GROUP BY sender_id
       ) unread ON unread.sender_id = u.id_utilisateur
-      LEFT JOIN (
-        SELECT 
-          CASE 
-            WHEN cm.sender_id = ? THEN cm.receiver_id
-            ELSE cm.sender_id
-          END AS other_user_id,
-          cm.message,
-          cm.created_at,
-          cm.sender_id,
-          ROW_NUMBER() OVER (
-            PARTITION BY 
-              CASE 
-                WHEN cm.sender_id = ? THEN cm.receiver_id
-                ELSE cm.sender_id
-              END
-            ORDER BY cm.created_at DESC
-          ) AS rn
-        FROM chat_messages cm
-        WHERE cm.sender_id = ? OR cm.receiver_id = ?
-      ) last_msg ON last_msg.other_user_id = u.id_utilisateur AND last_msg.rn = 1
+      LEFT JOIN chat_messages last_msg
+        ON last_msg.id = (
+          SELECT lm.id
+          FROM chat_messages lm
+          WHERE (lm.sender_id = ? AND lm.receiver_id = u.id_utilisateur)
+             OR (lm.sender_id = u.id_utilisateur AND lm.receiver_id = ?)
+          ORDER BY lm.created_at DESC, lm.id DESC
+          LIMIT 1
+        )
       WHERE u.id_utilisateur != ? AND u.actif = 1
       ORDER BY 
         COALESCE(unread.cnt, 0) DESC,
         last_msg.created_at DESC,
         u.nom ASC
-    `, [userId, userId, userId, userId, userId, userId]);
+    `, [userId, userId, userId, userId]);
 
     return res.json({ success: true, contacts });
   } catch (error) {
@@ -366,6 +355,35 @@ router.get('/calls/status', protect, async (req, res) => {
     return res.json({ success: true, call });
   } catch (error) {
     console.error('Erreur GET /chat/calls/status:', error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// ==================== HISTORIQUE DES APPELS ====================
+router.get('/calls/history', protect, async (req, res) => {
+  try {
+    const userId = req.user.id_utilisateur;
+
+    const [calls] = await pool.execute(
+      `SELECT 
+         c.id, c.caller_id, c.callee_id, c.call_type, c.status,
+         c.started_at, c.ended_at,
+         other.id_utilisateur AS other_id,
+         other.nom, other.prenom,
+         CASE WHEN c.caller_id = ? THEN 'outgoing' ELSE 'incoming' END AS direction,
+         TIMESTAMPDIFF(SECOND, c.started_at, c.ended_at) AS duration_seconds
+       FROM chat_calls c
+       JOIN utilisateurs other
+         ON other.id_utilisateur = IF(c.caller_id = ?, c.callee_id, c.caller_id)
+       WHERE c.caller_id = ? OR c.callee_id = ?
+       ORDER BY c.started_at DESC
+       LIMIT 100`,
+      [userId, userId, userId, userId]
+    );
+
+    return res.json({ success: true, calls });
+  } catch (error) {
+    console.error('Erreur GET /chat/calls/history:', error);
     return res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
