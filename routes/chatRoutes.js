@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { pool } = require('../config/database');
 const { protect } = require('../middleware/authMiddleware');
+const citoyenCallService = require('../services/citoyenCallService');
 
 const router = express.Router();
 
@@ -327,7 +328,7 @@ router.post('/calls/action', protect, async (req, res) => {
         [call_id, userId]
       );
       if (io) {
-        io.to(`user_${call.caller_id}`).emit('call-accept', { callId: call_id, calleeId: userId });
+        citoyenCallService.emitToParticipant(io, call.caller_id, 'call-accept', { callId: call_id, calleeId: userId }, call_id);
       }
     } else if (action === 'reject') {
       const [upd] = await pool.execute(
@@ -335,7 +336,7 @@ router.post('/calls/action', protect, async (req, res) => {
         [call_id, userId]
       );
       if (io) {
-        io.to(`user_${call.caller_id}`).emit('call-reject', { callId: call_id, calleeId: userId });
+        citoyenCallService.emitToParticipant(io, call.caller_id, 'call-reject', { callId: call_id, calleeId: userId }, call_id);
       }
       if (upd.affectedRows > 0) {
         await addCallEvent(io, call, {
@@ -351,7 +352,7 @@ router.post('/calls/action', protect, async (req, res) => {
         );
         const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
         if (io) {
-          io.to(`user_${otherUserId}`).emit('call-end', { callId: call_id, userId });
+          citoyenCallService.emitToParticipant(io, otherUserId, 'call-end', { callId: call_id, userId }, call_id);
         }
         const startedAt = call.started_at
           ? new Date(String(call.started_at).replace(' ', 'T'))
@@ -375,14 +376,14 @@ router.post('/calls/action', protect, async (req, res) => {
         if (upd.affectedRows > 0) {
           if (userId === call.caller_id) {
             // L'appelant a raccroché pendant la sonnerie
-            if (io) io.to(`user_${otherUserId}`).emit('call-missed', { callId: call_id, callerId: userId });
+            if (io) citoyenCallService.emitToParticipant(io, otherUserId, 'call-missed', { callId: call_id, callerId: userId }, call_id);
             await addCallEvent(io, call, {
               [call.caller_id]: '🔕 Appel annulé',
               [call.callee_id]: '📵 Appel manqué',
             });
           } else {
             // L'appelé a raccroché pendant la sonnerie
-            if (io) io.to(`user_${otherUserId}`).emit('call-missed', { callId: call_id, calleeId: userId });
+            if (io) citoyenCallService.emitToParticipant(io, otherUserId, 'call-missed', { callId: call_id, calleeId: userId }, call_id);
             await addCallEvent(io, call, {
               [call.caller_id]: '📵 Appel manqué',
               [call.callee_id]: '🔕 Appel annulé',
@@ -397,7 +398,7 @@ router.post('/calls/action', protect, async (req, res) => {
       );
       if (upd.affectedRows > 0) {
         const otherUserId = call.caller_id === userId ? call.callee_id : call.caller_id;
-        if (io) io.to(`user_${otherUserId}`).emit('call-failed', { callId: call_id, userId });
+        if (io) citoyenCallService.emitToParticipant(io, otherUserId, 'call-failed', { callId: call_id, userId }, call_id);
         await addCallEvent(io, call, {
           [call.caller_id]: '❌ Appel échoué',
           [call.callee_id]: '❌ Appel échoué',
@@ -409,7 +410,7 @@ router.post('/calls/action', protect, async (req, res) => {
         [call_id, userId]
       );
       if (upd.affectedRows > 0) {
-        if (io) io.to(`user_${call.caller_id}`).emit('call-missed', { callId: call_id, calleeId: userId });
+        if (io) citoyenCallService.emitToParticipant(io, call.caller_id, 'call-missed', { callId: call_id, calleeId: userId }, call_id);
         await addCallEvent(io, call, {
           [call.caller_id]: '📵 Appel manqué',
           [call.callee_id]: '📵 Appel manqué',

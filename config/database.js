@@ -426,6 +426,18 @@ const createTables = async () => {
       created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
       FOREIGN KEY (call_id) REFERENCES chat_calls(id) ON DELETE CASCADE,
       INDEX idx_chat_signal_polling (call_id, receiver_id, id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS parametres_appel_citoyen (
+      id INT PRIMARY KEY,
+      id_utilisateur INT NULL,
+      email VARCHAR(150) NULL,
+      direction VARCHAR(100) NULL,
+      role VARCHAR(100) NULL,
+      updated_by INT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (id_utilisateur) REFERENCES utilisateurs(id_utilisateur) ON DELETE SET NULL,
+      FOREIGN KEY (updated_by) REFERENCES utilisateurs(id_utilisateur) ON DELETE SET NULL
     )`
   ];
   
@@ -636,6 +648,10 @@ const initDatabase = async () => {
     await createTables();
     await runMigrations();
     await insertInitialData();
+    // Configuration des appels citoyens (table + agent destinataire par défaut)
+    const service = require('../services/citoyenCallService');
+    await service.ensureCitoyenCaller();
+    await service.ensureDefaultRecipient();
     console.log('✅ Base de données initialisée avec succès');
   } catch (error) {
     console.error('❌ Erreur initialisation base de données:', error);

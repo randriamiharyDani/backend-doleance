@@ -6,9 +6,13 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const dotenv = require('dotenv');
 const http = require('http');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 
 dotenv.config();
+
+const { pool } = require('./config/database');
+const citoyenCallService = require('./services/citoyenCallService');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +26,7 @@ const io = new Server(server, {
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174'
-      // 'http://192.168.99.134:5173'
+      // 'http://192.168.99.145:5173'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true
@@ -33,7 +37,8 @@ const io = new Server(server, {
 const editingDoleances = {};
 
 // Stockage des utilisateurs connectés
-const onlineUsers = new Map(); // userId -> Map of socketId -> { userName, userRole, connectedAt }
+// (Map partagée avec citoyenCallService pour la disponibilité des agents)
+const onlineUsers = citoyenCallService.onlineUsers;
 
 // ================================
 // Socket.IO - Authentification JWT au handshake
@@ -43,7 +48,13 @@ const jwt = require('jsonwebtoken');
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) {
-    return next(new Error('Token d\'authentification requis'));
+    // Connexion "invité" : citoyen appelant sans compte (aucun JWT requis)
+    socket.isGuest = true;
+    socket.userId = null;
+    socket.userName = 'Citoyen';
+    socket.userRole = 'citoyen';
+    socket.guestId = 'guest_' + crypto.randomBytes(16).toString('hex');
+    return next();
   }
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -95,7 +106,7 @@ app.use(
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174'
-      // 'http://192.168.99.134:5173'
+      // 'http://192.168.99.145:5173'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -152,6 +163,7 @@ const serviceRoutes = require('./routes/serviceRoutes');
 const corbeilleRoutes = require('./routes/corbeilleRoutes');
 const globalRoutes = require('./routes/globalRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const citoyenCallRoutes = require('./routes/citoyenCallRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/doleances', doleanceRoutes);
@@ -164,6 +176,7 @@ app.use('/api/directions', directionRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/corbeille', corbeilleRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/citoyen-call', citoyenCallRoutes);
 app.use('/api', globalRoutes);
 
 // ================================
@@ -191,11 +204,19 @@ function broadcastOnlineUsers() {
 // ================================
 
 io.on('connection', (socket) => {
-  console.log(`🔌 Nouvelle connexion WebSocket : ${socket.id} — userId: ${socket.userId}`);
+  console.log(`🔌 Nouvelle connexion WebSocket : ${socket.id} — userId: ${socket.userId || socket.guestId}`);
 
   // Le token JWT est déjà validé par le middleware io.use()
   // socket.userId, socket.userName, socket.userRole sont déjà définis
-  socket.join(`user_${socket.userId}`);
+  if (socket.isGuest) {
+    // Citoyen invité : salon dédié pour les événements d'appel
+    socket.join(`guest_${socket.guestId}`);
+    citoyenCallService.registerGuest(socket);
+    socket.emit('guest-ready', { guestId: socket.guestId });
+    console.log(`👤 Citoyen (invité) connecté : ${socket.guestId}`);
+  } else {
+    socket.join(`user_${socket.userId}`);
+  }
 
   // ========== GESTION DES UTILISATEURS EN LIGNE ==========
   socket.on('user-connected', (data) => {
@@ -463,14 +484,81 @@ io.on('connection', (socket) => {
     console.log(`📞 Invitation appel de ${socket.userId} vers ${calleeId}`);
   });
 
+  // ===== APPEL CITOYEN -> AGENT (sans compte, sans doléance) =====
+  // Le citoyen demande le démarrage d'un appel vers l'agent destinataire configuré.
+  socket.on('citizen-call-start', async (data) => {
+    if (!socket.isGuest) return;
+    const callType = data && data.call_type === 'video' ? 'video' : 'audio';
+
+    try {
+      const agent = await citoyenCallService.getRecipientAgent();
+      if (!agent || !citoyenCallService.isUserOnline(agent.id_utilisateur)) {
+        socket.emit('citizen-call-started', {
+          success: false,
+          reason: 'no_agent',
+          message: 'Aucun agent disponible',
+        });
+        return;
+      }
+
+      // Clôturer un éventuel appel citoyen précédent resté "ringing"
+      await pool.execute(
+        `UPDATE chat_calls SET status = 'missed', ended_at = NOW()
+         WHERE caller_id = ? AND status = 'ringing'`,
+        [citoyenCallService.CITOYEN_CALLER_ID]
+      ).catch(() => {});
+
+      const [result] = await pool.execute(
+        `INSERT INTO chat_calls (caller_id, callee_id, call_type, status)
+         VALUES (?, ?, ?, 'ringing')`,
+        [citoyenCallService.CITOYEN_CALLER_ID, agent.id_utilisateur, callType]
+      );
+      const callId = result.insertId;
+      citoyenCallService.citizenCallGuests[callId] = socket.guestId;
+
+      io.to(`user_${agent.id_utilisateur}`).emit('call-invite', {
+        callId,
+        callerId: citoyenCallService.CITOYEN_CALLER_ID,
+        callerName: 'Citoyen',
+        callType,
+        isCitizenCall: true,
+      });
+
+      socket.emit('citizen-call-started', {
+        success: true,
+        callId,
+        callType,
+        agent: {
+          id_utilisateur: agent.id_utilisateur,
+          nom: agent.nom,
+          prenom: agent.prenom,
+          email: agent.email,
+          direction: agent.nom_direction || null,
+        },
+      });
+
+      console.log(`📞 Appel citoyen ${callId} (${callType}) → agent ${agent.id_utilisateur}`);
+    } catch (error) {
+      console.error('Erreur citizen-call-start:', error);
+      socket.emit('citizen-call-started', {
+        success: false,
+        reason: 'error',
+        message: 'Erreur serveur',
+      });
+    }
+  });
+
   socket.on('call-accept', (data) => {
     const { callerId, caller_id, call_id, callId } = data;
     const targetId = callerId || caller_id;
     const cId = callId || call_id;
     if (targetId) {
-      io.to(`user_${targetId}`).emit('call-accept', { callId: cId, calleeId: socket.userId });
+      citoyenCallService.emitToParticipant(io, targetId, 'call-accept', {
+        callId: cId,
+        calleeId: socket.isGuest ? null : socket.userId,
+      }, cId);
     }
-    console.log(`📞 Appel ${cId} accepté par ${socket.userId}`);
+    console.log(`📞 Appel ${cId} accepté par ${socket.isGuest ? 'citoyen' : socket.userId}`);
   });
 
   socket.on('call-reject', (data) => {
@@ -478,19 +566,35 @@ io.on('connection', (socket) => {
     const targetId = callerId || caller_id;
     const cId = callId || call_id;
     if (targetId) {
-      io.to(`user_${targetId}`).emit('call-reject', { callId: cId, calleeId: socket.userId });
+      citoyenCallService.emitToParticipant(io, targetId, 'call-reject', {
+        callId: cId,
+        calleeId: socket.isGuest ? null : socket.userId,
+      }, cId);
     }
-    console.log(`📞 Appel ${cId} refusé par ${socket.userId}`);
+    console.log(`📞 Appel ${cId} refusé par ${socket.isGuest ? 'citoyen' : socket.userId}`);
   });
 
   socket.on('call-end', (data) => {
     const { otherUserId, receiver_id, call_id, callId } = data;
     const targetId = otherUserId || receiver_id;
     const cId = callId || call_id;
-    if (targetId) {
-      io.to(`user_${targetId}`).emit('call-end', { callId: cId, userId: socket.userId });
+
+    // Si le citoyen (invité) raccroche, mettre à jour le statut en base
+    if (socket.isGuest && cId) {
+      pool.execute(
+        `UPDATE chat_calls SET status = 'ended', ended_at = NOW()
+         WHERE id = ? AND status IN ('ringing', 'accepted')`,
+        [cId]
+      ).catch(() => {});
     }
-    console.log(`📞 Appel ${cId} terminé par ${socket.userId}`);
+
+    if (targetId) {
+      citoyenCallService.emitToParticipant(io, targetId, 'call-end', {
+        callId: cId,
+        userId: socket.isGuest ? null : socket.userId,
+      }, cId);
+    }
+    console.log(`📞 Appel ${cId} terminé par ${socket.isGuest ? 'citoyen' : socket.userId}`);
   });
 
   socket.on('call-signal', (data) => {
@@ -499,18 +603,39 @@ io.on('connection', (socket) => {
     const type = signal_type;
     const sdata = signal_data || signal;
     if (targetId && type) {
-      io.to(`user_${targetId}`).emit('call-signal', {
-        senderId: socket.userId,
+      // Persister l'offre WebRTC d'un citoyen en base (repli pour l'agent hors-ligne ou perdu)
+      if (socket.isGuest && type === 'offer' && call_id) {
+        pool.execute(
+          `INSERT INTO chat_signals (call_id, sender_id, receiver_id, signal_type, signal_data)
+           VALUES (?, ?, ?, 'offer', ?)`,
+          [
+            call_id,
+            citoyenCallService.CITOYEN_CALLER_ID,
+            targetId,
+            typeof sdata === 'object' ? JSON.stringify(sdata) : sdata,
+          ]
+        ).catch(() => {});
+      }
+      citoyenCallService.emitToParticipant(io, targetId, 'call-signal', {
+        senderId: socket.isGuest ? 'Citoyen' : socket.userId,
+        senderName: socket.isGuest ? 'Citoyen' : socket.userName,
         call_id: call_id,
         signal_type: type,
         signal_data: sdata,
-      });
+      }, call_id);
     }
   });
 
   // ========== DECONNEXION ==========
 
   socket.on('disconnect', () => {
+    // Citoyen invité : nettoyage du suivi des appels citoyens
+    if (socket.isGuest) {
+      citoyenCallService.unregisterGuest(socket);
+      console.log(`🔌 Citoyen invité déconnecté : ${socket.guestId}`);
+      return;
+    }
+
     // Retirer l'utilisateur de la liste des connectés (uniquement ce socket)
     if (socket.userId && onlineUsers.has(socket.userId)) {
       const sockets = onlineUsers.get(socket.userId);
