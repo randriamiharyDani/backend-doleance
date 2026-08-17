@@ -535,4 +535,183 @@ router.get('/signals', protect, async (req, res) => {
   }
 });
 
+// ==================== ADMIN : LISTE DES APPELS ====================
+router.get('/calls/admin', protect, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status, call_type, date_from, date_to, search } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = [];
+    let params = [];
+
+    if (status && ['ringing', 'accepted', 'rejected', 'ended', 'missed'].includes(status)) {
+      where.push('c.status = ?');
+      params.push(status);
+    }
+    if (call_type && ['audio', 'video'].includes(call_type)) {
+      where.push('c.call_type = ?');
+      params.push(call_type);
+    }
+    if (date_from) {
+      where.push('c.started_at >= ?');
+      params.push(date_from);
+    }
+    if (date_to) {
+      where.push('c.started_at <= ?');
+      params.push(date_to + ' 23:59:59');
+    }
+    if (search && search.trim()) {
+      where.push('(caller.nom LIKE ? OR caller.prenom LIKE ? OR callee.nom LIKE ? OR callee.prenom LIKE ?)');
+      const s = `%${search.trim()}%`;
+      params.push(s, s, s, s);
+    }
+
+    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+
+    const countParams = [...params];
+    const [countResult] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM chat_calls c
+       LEFT JOIN utilisateurs caller ON caller.id_utilisateur = c.caller_id
+       LEFT JOIN utilisateurs callee ON callee.id_utilisateur = c.callee_id
+       ${whereClause}`,
+      countParams
+    );
+    const total = countResult[0].total;
+    const pages = Math.ceil(total / limitNum);
+
+    const dataParams = [...params, String(limitNum), String(offset)];
+    const [calls] = await pool.execute(
+      `SELECT 
+         c.id, c.caller_id, c.callee_id, c.call_type, c.status,
+         c.started_at, c.ended_at,
+         CASE WHEN c.caller_id = 999999 THEN 'Citoyen'
+              ELSE CONCAT(caller.prenom, ' ', caller.nom)
+         END AS caller_name,
+         CONCAT(callee.prenom, ' ', callee.nom) AS callee_name,
+         c.caller_id = 999999 AS is_citizen_call,
+         TIMESTAMPDIFF(SECOND, c.started_at, c.ended_at) AS duration_seconds
+       FROM chat_calls c
+       LEFT JOIN utilisateurs caller ON caller.id_utilisateur = c.caller_id
+       LEFT JOIN utilisateurs callee ON callee.id_utilisateur = c.callee_id
+       ${whereClause}
+       ORDER BY c.started_at DESC
+       LIMIT ? OFFSET ?`,
+      dataParams
+    );
+
+    return res.json({ success: true, data: calls, pagination: { page: pageNum, limit: limitNum, total, pages } });
+  } catch (error) {
+    console.error('Erreur GET /chat/calls/admin:', error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// ==================== ADMIN : STATISTIQUES DES APPELS ====================
+router.get('/calls/admin/stats', protect, async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+
+    let where = [];
+    let params = [];
+
+    if (date_from) {
+      where.push('started_at >= ?');
+      params.push(date_from);
+    }
+    if (date_to) {
+      where.push('started_at <= ?');
+      params.push(date_to + ' 23:59:59');
+    }
+
+    const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+
+    const [totals] = await pool.execute(
+      `SELECT 
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+         SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed,
+         SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+         SUM(CASE WHEN status = 'ended' THEN 1 ELSE 0 END) AS ended,
+         SUM(CASE WHEN status = 'ringing' THEN 1 ELSE 0 END) AS ringing,
+         SUM(CASE WHEN caller_id = 999999 THEN 1 ELSE 0 END) AS citizen_calls,
+         SUM(CASE WHEN caller_id != 999999 THEN 1 ELSE 0 END) AS agent_calls,
+         ROUND(AVG(CASE WHEN ended_at IS NOT NULL THEN TIMESTAMPDIFF(SECOND, started_at, ended_at) END), 0) AS avg_duration
+       FROM chat_calls ${whereClause}`,
+      params
+    );
+
+    const [byDay] = await pool.execute(
+      `SELECT 
+         DATE(started_at) AS date,
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+         SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed,
+         SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+         SUM(CASE WHEN status = 'ended' THEN 1 ELSE 0 END) AS ended
+       FROM chat_calls ${whereClause}
+       GROUP BY DATE(started_at)
+       ORDER BY date DESC
+       LIMIT 30`,
+      params
+    );
+
+    const [byHour] = await pool.execute(
+      `SELECT 
+         HOUR(started_at) AS hour,
+         COUNT(*) AS total
+       FROM chat_calls ${whereClause}
+       GROUP BY HOUR(started_at)
+       ORDER BY hour ASC`,
+      params
+    );
+
+    return res.json({
+      success: true,
+      totals: totals[0] || {},
+      byDay: byDay.reverse(),
+      byHour,
+    });
+  } catch (error) {
+    console.error('Erreur GET /chat/calls/admin/stats:', error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// ==================== ADMIN : DÉTAILS D'UN APPEL ====================
+router.get('/calls/admin/:id', protect, async (req, res) => {
+  try {
+    const callId = req.params.id;
+
+    const [calls] = await pool.execute(
+      `SELECT 
+         c.id, c.caller_id, c.callee_id, c.call_type, c.status,
+         c.started_at, c.ended_at,
+         CASE WHEN c.caller_id = 999999 THEN 'Citoyen'
+              ELSE CONCAT(caller.prenom, ' ', caller.nom)
+         END AS caller_name,
+         CONCAT(callee.prenom, ' ', callee.nom) AS callee_name,
+         CASE WHEN c.caller_id = 999999 THEN NULL ELSE caller.email END AS caller_email,
+         callee.email AS callee_email,
+         c.caller_id = 999999 AS is_citizen_call,
+         TIMESTAMPDIFF(SECOND, c.started_at, c.ended_at) AS duration_seconds
+       FROM chat_calls c
+       LEFT JOIN utilisateurs caller ON caller.id_utilisateur = c.caller_id
+       LEFT JOIN utilisateurs callee ON callee.id_utilisateur = c.callee_id
+       WHERE c.id = ?`,
+      [callId]
+    );
+
+    if (calls.length === 0) {
+      return res.status(404).json({ success: false, message: 'Appel non trouvé' });
+    }
+
+    return res.json({ success: true, call: calls[0] });
+  } catch (error) {
+    console.error('Erreur GET /chat/calls/admin/:id:', error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 module.exports = router;
