@@ -104,18 +104,21 @@ async function getConfig() {
 }
 
 // Retourne l'agent destinataire configuré (avec direction, rôle et disponibilité)
+// Ne retourne l'agent que si son rôle est autorisé pour les appels citoyens
 async function getRecipientAgent() {
   const config = await getConfig();
   if (!config || !config.id_utilisateur) return null;
 
+  const placeholders = CITIZEN_CALL_ALLOWED_ROLES.map(() => '?').join(',');
   const [users] = await pool.execute(
     `SELECT u.id_utilisateur, u.nom, u.prenom, u.email,
             d.nom_direction, r.nom_role
      FROM utilisateurs u
      LEFT JOIN directions d ON d.id_direction = u.id_direction
      LEFT JOIN roles r ON r.id_role = u.id_role
-     WHERE u.id_utilisateur = ? AND u.actif = 1`,
-    [config.id_utilisateur]
+     WHERE u.id_utilisateur = ? AND u.actif = 1
+       AND r.nom_role IN (${placeholders})`,
+    [config.id_utilisateur, ...CITIZEN_CALL_ALLOWED_ROLES]
   );
 
   if (!users[0]) return null;
@@ -123,8 +126,13 @@ async function getRecipientAgent() {
   return { ...agent, disponible: isUserOnline(agent.id_utilisateur) };
 }
 
+// Rôles autorisés comme destinataire des appels citoyens
+const CITIZEN_CALL_ALLOWED_ROLES = ['administrateur_systeme', 'agent_central'];
+
 // Liste des agents candidats (pour la configuration Admin)
+// Uniquement les rôles autorisés pour les appels citoyens
 async function getCandidateAgents() {
+  const placeholders = CITIZEN_CALL_ALLOWED_ROLES.map(() => '?').join(',');
   const [users] = await pool.execute(
     `SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.actif,
             d.nom_direction, r.nom_role
@@ -132,21 +140,27 @@ async function getCandidateAgents() {
      LEFT JOIN directions d ON d.id_direction = u.id_direction
      LEFT JOIN roles r ON r.id_role = u.id_role
      WHERE u.actif = 1
-       AND r.nom_role IS NOT NULL
-       AND r.nom_role NOT IN ('citoyen')
-     ORDER BY u.nom ASC, u.prenom ASC`
+       AND r.nom_role IN (${placeholders})
+     ORDER BY u.nom ASC, u.prenom ASC`,
+    CITIZEN_CALL_ALLOWED_ROLES
   );
   return users.map((u) => ({ ...u, disponible: isUserOnline(u.id_utilisateur) }));
 }
 
 // Change l'agent destinataire (depuis l'espace Admin)
+// Valide que l'agent a un rôle autorisé pour les appels citoyens
 async function setRecipientAgent(agentId, updatedBy) {
+  const placeholders = CITIZEN_CALL_ALLOWED_ROLES.map(() => '?').join(',');
   const [rows] = await pool.execute(
-    'SELECT id_utilisateur FROM utilisateurs WHERE id_utilisateur = ? AND actif = 1',
-    [agentId]
+    `SELECT u.id_utilisateur, r.nom_role
+     FROM utilisateurs u
+     LEFT JOIN roles r ON r.id_role = u.id_role
+     WHERE u.id_utilisateur = ? AND u.actif = 1
+       AND r.nom_role IN (${placeholders})`,
+    [agentId, ...CITIZEN_CALL_ALLOWED_ROLES]
   );
   if (rows.length === 0) {
-    throw new Error('Agent non trouvé ou inactif');
+    throw new Error('Agent non trouvé, inactif ou rôle non autorisé pour les appels citoyens');
   }
 
   await pool.execute(
@@ -225,6 +239,7 @@ module.exports = {
   DEFAULT_AGENT_EMAIL,
   DEFAULT_AGENT_DIRECTION,
   DEFAULT_AGENT_ROLE,
+  CITIZEN_CALL_ALLOWED_ROLES,
   onlineUsers,
   guestSockets,
   citizenCallGuests,

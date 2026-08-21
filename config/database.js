@@ -139,6 +139,33 @@ const insertInitialData = async () => {
       (5, 'Quartier Résidentiel Ouest', '75005'),
       (5, 'Zone Touristique', '75005')
     `);
+
+    // Insertion des directions Police Municipale et BMH (si absentes)
+    await promisePool.execute(`
+      INSERT IGNORE INTO directions (id_direction, nom_direction, description) VALUES
+      (40, 'Police Municipale', 'Police municipale - sécurité et tranquillité publiques'),
+      (41, 'Bureau Municipal d''Hygiène (BMH)', 'Hygiène urbaine et salubrité publique')
+    `).catch(() => {});
+
+    // Insertion des catégories Police Municipale (si absentes)
+    await promisePool.execute(`
+      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module, actif) VALUES
+      (50, 'Stationnement illégal', 'Fijanonana tsy ara-dalàna', 'Véhicules garés sur trottoirs, voies piétonnes ou espaces interdits', 'Police Municipale', 40, '#3B82F6', 'bus', 'Police Municipale', 1),
+      (51, 'Nuisances sonores', 'Tabataba be loatra', 'Bruit excessif, musique forte, travaux nocturnes, tapage', 'Police Municipale', 40, '#F59E0B', 'security', 'Police Municipale', 1),
+      (52, 'Divagation d''animaux', 'Biby miveveve', 'Animaux errants ou divaguant sur la voie publique', 'Police Municipale', 40, '#84CC16', 'animal', 'Police Municipale', 1),
+      (53, 'Commerce illicite', 'Varotra tsy ara-dalàna', 'Étalages sauvages, occupation illicite du domaine public', 'Police Municipale', 40, '#8B5CF6', 'people', 'Police Municipale', 1),
+      (54, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, NULL, '#6B7280', 'clipboard', 'Police Municipale', 1)
+    `).catch(() => {});
+
+    // Insertion des catégories BMH (si absentes)
+    await promisePool.execute(`
+      INSERT IGNORE INTO categories_doleance (id_categorie, nom_categorie, nom_malgache, description, direction_concernee, id_direction, couleur, icone, module, actif) VALUES
+      (55, 'Insalubrité', 'Tsy fahadiovana', 'Dépôts d''ordures, terrains vagues sales, excreta sur la voie publique', 'Bureau Municipal d''Hygiène (BMH)', 41, '#10B981', 'trash', 'BMH', 1),
+      (56, 'Eaux usées', 'Rano maloto', 'Eaux stagnantes, canalisations bouchées, débordements d''égouts', 'Bureau Municipal d''Hygiène (BMH)', 41, '#06B6D4', 'flood', 'BMH', 1),
+      (57, 'Nuisances olfactives', 'Foetra mampirafy', 'Odeurs nauséabondes, fumées toxiques, pollution de l''air', 'Bureau Municipal d''Hygiène (BMH)', 41, '#F97316', 'hazard', 'BMH', 1),
+      (58, 'Hygiène alimentaire', 'Fadiovan-tsakafo', 'Commerces alimentaires insalubres, produits périmés, étals non conformes', 'Bureau Municipal d''Hygiène (BMH)', 41, '#EC4899', 'medical', 'BMH', 1),
+      (59, 'Autre (Hafa)', 'Hafa', 'Décrivez librement votre problème si aucune catégorie ne correspond', NULL, NULL, '#6B7280', 'clipboard', 'BMH', 1)
+    `).catch(() => {});
     
     // Insertion des catégories Sapeurs-Pompiers (si absentes)
     // await promisePool.execute(`
@@ -471,7 +498,9 @@ const runMigrations = async () => {
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS nom_malgache VARCHAR(200) NULL AFTER nom_categorie`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS description_malagasy TEXT NULL AFTER description`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS direction_concernee VARCHAR(200) NULL AFTER description`,
-    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers') DEFAULT 'CUA' AFTER direction_concernee`,
+    `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS module ENUM('CUA', 'Sapeurs-Pompiers', 'Police Municipale', 'BMH') DEFAULT 'CUA' AFTER direction_concernee`,
+    // Étendre l'ENUM module avec les nouveaux modules (idempotent, met à jour la colonne si elle existe déjà)
+    `ALTER TABLE categories_doleance MODIFY COLUMN module ENUM('CUA', 'Sapeurs-Pompiers', 'Police Municipale', 'BMH') DEFAULT 'CUA'`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS actif TINYINT(1) DEFAULT 1 AFTER module`,
     `ALTER TABLE categories_doleance ADD COLUMN IF NOT EXISTS id_direction INT NULL AFTER actif`,
     `ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system TINYINT(1) DEFAULT 0 AFTER permissions`,

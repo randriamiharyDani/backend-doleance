@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const dotenv = require('dotenv');
 const http = require('http');
+// const https = require('https'); // HTTPS/mkcert désactivé — retour à HTTP
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 
@@ -15,19 +16,20 @@ const { pool } = require('./config/database');
 const citoyenCallService = require('./services/citoyenCallService');
 
 const app = express();
+// HTTP simple (HTTPS/mkcert retiré)
 const server = http.createServer(app);
+// const fs = require('fs');
+// const server = https.createServer({
+//   key: fs.readFileSync(process.env.HTTPS_KEY_PATH || './192.168.99.86+2-key.pem'),
+//   cert: fs.readFileSync(process.env.HTTPS_CERT_PATH || './192.168.99.86+2.pem')
+// }, app);
+
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 
 // Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:5174'
-      // 'http://192.168.99.145:5173'
-    ],
+    origin: corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true
   }
@@ -68,14 +70,37 @@ io.use((socket, next) => {
 });
 
 // ================================
+// CORS — Doit être le PREMIER middleware
+// pour garantir les headers sur les réponses OPTIONS (preflight)
+// ================================
+
+app.use(
+  cors({
+    origin: process.env.NODE_ENV === 'development'
+      ? true
+      : corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  })
+);
+
+// ================================
 // Security middleware
+// crossOriginOpenerPolicy et crossOriginEmbedderPolicy désactivés
+// car ils interfèrent avec les requêtes cross-origin (CORS)
 // ================================
 
 app.use(
   helmet({
     crossOriginResourcePolicy: {
       policy: 'cross-origin'
-    }
+    },
+    crossOriginOpenerPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    // Serveur en HTTP : désactiver HSTS (sinon les navigateurs ayant visité
+    // la version HTTPS forceraient https et bloqueraient toutes les requêtes)
+    strictTransportSecurity: false
   })
 );
 
@@ -93,26 +118,6 @@ const limiter = rateLimit({
 });
 
 app.use('/api', limiter);
-
-// ================================
-// CORS
-// ================================
-
-app.use(
-  cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://127.0.0.1:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:5174'
-      // 'http://192.168.99.145:5173'
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-  })
-);
 
 // ================================
 // Body Parser
@@ -485,10 +490,10 @@ io.on('connection', (socket) => {
   });
 
   // ===== APPEL CITOYEN -> AGENT (sans compte, sans doléance) =====
-  // Le citoyen demande le démarrage d'un appel vers l'agent destinataire configuré.
+  // Appels Citoyen → Agent : AUDIO UNIQUEMENT, jamais de vidéo
   socket.on('citizen-call-start', async (data) => {
     if (!socket.isGuest) return;
-    const callType = data && data.call_type === 'video' ? 'video' : 'audio';
+    const callType = 'audio';
 
     try {
       const agent = await citoyenCallService.getRecipientAgent();
@@ -579,8 +584,8 @@ io.on('connection', (socket) => {
     const targetId = otherUserId || receiver_id;
     const cId = callId || call_id;
 
-    // Si le citoyen (invité) raccroche, mettre à jour le statut en base
-    if (socket.isGuest && cId) {
+    // Mettre à jour le statut en base QUEL QUE SOIT l'appelant (citoyen ou agent)
+    if (cId) {
       pool.execute(
         `UPDATE chat_calls SET status = 'ended', ended_at = NOW()
          WHERE id = ? AND status IN ('ringing', 'accepted')`,
@@ -629,22 +634,68 @@ io.on('connection', (socket) => {
   // ========== DECONNEXION ==========
 
   socket.on('disconnect', () => {
-    // Citoyen invité : nettoyage du suivi des appels citoyens
+    // Citoyen invité : clôturer les appels actifs et nettoyer le suivi
     if (socket.isGuest) {
+      const guestId = socket.guestId;
+      const callsToNotify = [];
+      for (const [callId, gid] of Object.entries(citoyenCallService.citizenCallGuests)) {
+        if (gid === guestId) {
+          callsToNotify.push(Number(callId));
+        }
+      }
+      for (const cid of callsToNotify) {
+        delete citoyenCallService.citizenCallGuests[cid];
+        pool.execute(
+          `UPDATE chat_calls SET status = 'ended', ended_at = NOW()
+           WHERE id = ? AND status IN ('ringing', 'accepted')`,
+          [cid]
+        ).catch(() => {});
+        pool.execute(
+          `SELECT callee_id FROM chat_calls WHERE id = ?`, [cid]
+        ).then(([rows]) => {
+          if (rows[0]) {
+            io.to(`user_${rows[0].callee_id}`).emit('call-end', { callId: cid });
+          }
+        }).catch(() => {});
+      }
       citoyenCallService.unregisterGuest(socket);
-      console.log(`🔌 Citoyen invité déconnecté : ${socket.guestId}`);
+      console.log(`🔌 Citoyen invité déconnecté : ${guestId} (${callsToNotify.length} appel(s) clôturé(s))`);
       return;
     }
 
-    // Retirer l'utilisateur de la liste des connectés (uniquement ce socket)
-    if (socket.userId && onlineUsers.has(socket.userId)) {
+    // Utilisateur enregistré (agent) : clôturer les appels actifs
+    if (socket.userId) {
+      pool.execute(
+        `SELECT id, caller_id, callee_id FROM chat_calls
+         WHERE (caller_id = ? OR callee_id = ?) AND status IN ('ringing', 'accepted')`,
+        [socket.userId, socket.userId]
+      ).then(([rows]) => {
+        for (const call of rows) {
+          pool.execute(
+            `UPDATE chat_calls SET status = 'ended', ended_at = NOW() WHERE id = ?`,
+            [call.id]
+          ).catch(() => {});
+          const otherId = call.caller_id === socket.userId ? call.callee_id : call.caller_id;
+          citoyenCallService.emitToParticipant(io, otherId, 'call-end', {
+            callId: call.id,
+            userId: socket.userId,
+          }, call.id);
+        }
+        if (rows.length > 0) {
+          console.log(`📞 Agent ${socket.userId} déconnecté — ${rows.length} appel(s) clôturé(s)`);
+        }
+      }).catch(() => {});
+
+      // Retirer l'utilisateur de la liste des connectés (uniquement ce socket)
       const sockets = onlineUsers.get(socket.userId);
-      sockets.delete(socket.id);
-      if (sockets.size === 0) {
-        onlineUsers.delete(socket.userId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          onlineUsers.delete(socket.userId);
+        }
+        console.log(`👤 Socket retiré de la liste en ligne : ${socket.userId} (${socket.id})`);
+        broadcastOnlineUsers();
       }
-      console.log(`👤 Socket retiré de la liste en ligne : ${socket.userId} (${socket.id})`);
-      broadcastOnlineUsers();
     }
 
     // Libérer tous les verrous de ce socket
