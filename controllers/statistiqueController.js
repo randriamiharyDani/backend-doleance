@@ -45,7 +45,12 @@ const getDashboardStats = async (req, res) => {
     );
 
     const [urgentesResult] = await pool.execute(
-      `SELECT COUNT(*) as urgentes FROM doleances WHERE (id_statut = 9 OR id_priorite = 4) AND id_statut NOT IN (5, 6) ${directionFilter}${categorieFilter}`,
+      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4 AND id_statut NOT IN (5, 6) ${directionFilter}${categorieFilter}`,
+      params
+    );
+
+    const [transfereesResult] = await pool.execute(
+      `SELECT COUNT(*) as transferees FROM doleances WHERE id_statut = 8 ${directionFilter}${categorieFilter}`,
       params
     );
 
@@ -55,7 +60,8 @@ const getDashboardStats = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
         SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
-        SUM(CASE WHEN (id_statut = 9 OR id_priorite = 4) AND id_statut NOT IN (5,6) THEN 1 ELSE 0 END) as urgentes
+        SUM(CASE WHEN id_priorite = 4 AND id_statut NOT IN (5,6) THEN 1 ELSE 0 END) as urgentes,
+        SUM(CASE WHEN id_statut = 8 THEN 1 ELSE 0 END) as transferees
       FROM doleances
       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,
       params
@@ -66,7 +72,8 @@ const getDashboardStats = async (req, res) => {
         COUNT(*) as total,
         SUM(CASE WHEN id_statut IN (1,2,3,4) THEN 1 ELSE 0 END) as enCours,
         SUM(CASE WHEN id_statut IN (5,6) THEN 1 ELSE 0 END) as resolues,
-        SUM(CASE WHEN (id_statut = 9 OR id_priorite = 4) AND id_statut NOT IN (5,6) THEN 1 ELSE 0 END) as urgentes
+        SUM(CASE WHEN id_priorite = 4 AND id_statut NOT IN (5,6) THEN 1 ELSE 0 END) as urgentes,
+        SUM(CASE WHEN id_statut = 8 THEN 1 ELSE 0 END) as transferees
       FROM doleances
       WHERE date_creation >= DATE_SUB(NOW(), INTERVAL 2 MONTH)
         AND date_creation < DATE_SUB(NOW(), INTERVAL 1 MONTH) ${directionFilter}`,
@@ -86,7 +93,8 @@ const getDashboardStats = async (req, res) => {
       total: calcChange(currentMonthResult[0].total, previousMonthResult[0].total),
       enCours: calcChange(currentMonthResult[0].enCours, previousMonthResult[0].enCours),
       resolues: calcChange(currentMonthResult[0].resolues, previousMonthResult[0].resolues),
-      urgentes: calcChange(currentMonthResult[0].urgentes, previousMonthResult[0].urgentes)
+      urgentes: calcChange(currentMonthResult[0].urgentes, previousMonthResult[0].urgentes),
+      transferees: calcChange(currentMonthResult[0].transferees, previousMonthResult[0].transferees)
     };
 
     // Données supplémentaires selon le rôle
@@ -139,6 +147,7 @@ const getDashboardStats = async (req, res) => {
         enCours: enCoursResult[0].enCours || 0,
         resolues: resoluesResult[0].resolues || 0,
         urgentes: urgentesResult[0].urgentes || 0,
+        transferees: transfereesResult[0].transferees || 0,
         evolution,
         ...additionalData
       }
@@ -290,14 +299,8 @@ const getStatsByStatut = async (req, res) => {
               COUNT(d.id_doleance) as count,
               ROUND(COUNT(d.id_doleance) * 100.0 / NULLIF((SELECT COUNT(*) FROM doleances WHERE 1=1 ${totalFilter}), 0), 2) as percentage
        FROM statuts s
-       LEFT JOIN (
-         SELECT id_doleance,
-                CASE WHEN (id_priorite = 4 OR id_statut = 9) AND id_statut NOT IN (5, 6)
-                     THEN 9 ELSE id_statut END AS bucket_id
-         FROM doleances
-         WHERE 1=1 ${directionFilter}
-       ) d ON d.bucket_id = s.id_statut
-       WHERE s.nom_statut <> 'transfert'
+       LEFT JOIN doleances d ON d.id_statut = s.id_statut ${directionFilter}
+       WHERE s.nom_statut <> 'transfert' AND s.id_statut <> 9
        GROUP BY s.id_statut
        ORDER BY s.ordre`,
       params

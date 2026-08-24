@@ -56,7 +56,7 @@ const deleteCategorie = async (id) => {
 };
 
 const getStatuts = async () => {
-  const [rows] = await pool.execute('SELECT * FROM statuts ORDER BY ordre');
+  const [rows] = await pool.execute('SELECT * FROM statuts WHERE id_statut <> 9 ORDER BY ordre');
   return rows;
 };
 

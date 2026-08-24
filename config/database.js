@@ -41,8 +41,7 @@ const insertInitialData = async () => {
       (5, 'Résolue', 'Problème résolu', '#4CAF50', 5),
       (6, 'Clôturée', 'Doléance clôturée', '#9E9E9E', 6),
       (7, 'Rejetée', 'Doléance rejetée', '#F44336', 7),
-      (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8),
-      (9, 'Urgente', 'Doléance nécessitant une intervention urgente', '#DC2626', 9)
+      (8, 'transferee', 'Doléance transférée vers une direction', '#7C3AED', 8)
     `);
     
     // Insertion des priorités
@@ -187,6 +186,24 @@ const insertInitialData = async () => {
       INSERT IGNORE INTO utilisateurs (id_utilisateur, id_role, nom, prenom, email, password, actif) VALUES
       (1, 4, 'Admin', 'Système', 'admin@mairie.com', ?, 1)
     `, [hashedPassword]);
+
+    // Insertion des contacts d'urgence par défaut (INSERT IGNORE : n'écrase jamais les valeurs modifiées)
+    await promisePool.execute(`
+      INSERT IGNORE INTO contacts_urgence (code, libelle, telephone, ordre) VALUES
+      ('CUA', 'CUA', '034 72 139 93', 1),
+      ('SAPEURS_POMPIERS', 'Sapeurs Pompiers', '034 12 232 35', 2),
+      ('POLICE_MUNICIPALE', 'Police Municipale', '034 58 694 10', 3),
+      ('BMH', 'BMH', '032 22 655 25', 4)
+    `).catch(() => {});
+
+    // Paramètres du site (footer public) : WhatsApp / Facebook / Instagram
+    await promisePool.execute(`
+      INSERT IGNORE INTO parametres_site (cle, valeur) VALUES
+      ('whatsapp', ''),
+      ('facebook', ''),
+      ('instagram', '')
+    `).catch(() => {});
+
     
     console.log('✅ Données initiales insérées avec succès');
   } catch (error) {
@@ -465,6 +482,22 @@ const createTables = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (id_utilisateur) REFERENCES utilisateurs(id_utilisateur) ON DELETE SET NULL,
       FOREIGN KEY (updated_by) REFERENCES utilisateurs(id_utilisateur) ON DELETE SET NULL
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS contacts_urgence (
+      id_contact INT PRIMARY KEY AUTO_INCREMENT,
+      code VARCHAR(50) NOT NULL UNIQUE,
+      libelle VARCHAR(100) NOT NULL,
+      telephone VARCHAR(30) NULL,
+      ordre INT DEFAULT 0,
+      updated_by INT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS parametres_site (
+      cle VARCHAR(50) PRIMARY KEY,
+      valeur TEXT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )`
   ];
   
@@ -620,15 +653,14 @@ const runMigrations = async () => {
     console.warn('⚠️ Statut transferee:', err.message);
   }
 
-  // S'assurer que le statut 'Urgente' existe
+  // Le statut 9 'Urgente' est obsolète : l'urgence s'exprime via la priorité (id_priorite = 4)
   try {
     await promisePool.execute(`
-      INSERT IGNORE INTO statuts (id_statut, nom_statut, description, couleur, ordre) 
-      VALUES (9, 'Urgente', 'Doléance nécessitant une intervention urgente', '#DC2626', 9)
+      UPDATE doleances SET id_statut = 1 WHERE id_statut = 9
     `);
-    console.log('✅ Statut Urgente vérifié');
+    console.log('✅ Doléances en statut Urgente obsolète migrées vers Nouvelle');
   } catch (err) {
-    console.warn('⚠️ Statut Urgente:', err.message);
+    console.warn('⚠️ Migration statut Urgente:', err.message);
   }
 
   // Seed des quartiers d'Antananarivo avec limites

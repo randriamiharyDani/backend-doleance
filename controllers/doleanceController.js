@@ -621,7 +621,7 @@ const createDoleance = async (req, res) => {
 
       const reference = doleanceModel.generateReference();
       const isSapeursPompiers = module === 'Sapeurs-Pompiers';
-      const defaultStatut = isSapeursPompiers ? 9 : 1;
+      const defaultStatut = 1;
       const defaultPriorite = isSapeursPompiers ? 4 : 2;
 
       const quartierValue = quartier ? String(quartier).trim() : null;
@@ -638,7 +638,7 @@ const createDoleance = async (req, res) => {
         id_doleance,
         id_statut_ancien: null,
         id_statut_nouveau: defaultStatut,
-        commentaire: isSapeursPompiers ? 'Création de la doléance (Sapeurs-Pompiers) - Statut urgent' : 'Création de la doléance'
+        commentaire: isSapeursPompiers ? 'Création de la doléance (Sapeurs-Pompiers, priorité urgente)' : 'Création de la doléance'
       });
 
       await connection.commit();
@@ -672,6 +672,10 @@ const updateStatut = async (req, res) => {
     const { id_statut, commentaire } = req.body;
     if (!id_statut) {
       return res.status(400).json({ success: false, message: 'Statut requis' });
+    }
+
+    if (Number(id_statut) === 9) {
+      return res.status(400).json({ success: false, message: "Le statut Urgente n'existe plus : utilisez la priorité Urgente" });
     }
 
     const oldStatut = await doleanceModel.getCurrentStatut(id);
@@ -948,7 +952,7 @@ const getStatsOverview = async (req, res) => {
       `SELECT COUNT(*) as resolues FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'Résolue') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [urgentes] = await pool.execute(
-      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'Urgente') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
+      `SELECT COUNT(*) as urgentes FROM doleances WHERE id_priorite = 4 AND id_statut NOT IN (5, 6) AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params
     );
     const [transferts] = await pool.execute(
       `SELECT COUNT(*) as transferts FROM doleances WHERE id_statut = (SELECT id_statut FROM statuts WHERE nom_statut = 'transfert') AND (supprime IS NULL OR supprime = 0)${directionFilter}`, params

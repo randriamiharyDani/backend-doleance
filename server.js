@@ -169,6 +169,7 @@ const corbeilleRoutes = require('./routes/corbeilleRoutes');
 const globalRoutes = require('./routes/globalRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const citoyenCallRoutes = require('./routes/citoyenCallRoutes');
+const siteSettingsRoutes = require('./routes/siteSettingsRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/doleances', doleanceRoutes);
@@ -182,6 +183,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/corbeille', corbeilleRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/citoyen-call', citoyenCallRoutes);
+app.use('/api/site-settings', siteSettingsRoutes);
 app.use('/api', globalRoutes);
 
 // ================================
