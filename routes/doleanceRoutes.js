@@ -4,6 +4,7 @@ const router = express.Router();
 const { protect, requirePermission, isAgentCentral, authorizeDoleance } = require('../middleware/authMiddleware');
 const {
     createDoleance,
+    checkReferenceAvailability,
     getDoleances,
     getDoleancesBackoffice,
     getDoleancesPublic,
@@ -47,6 +48,7 @@ router.get('/public', getDoleancesPublic);
 router.post('/public', createDoleance);
 router.get('/public/assigned-locations', getDoleancesAssignedLocations);
 router.get('/public/suggestions', getSuggestions);
+router.get('/public/check-reference/:reference', checkReferenceAvailability);
 router.get('/public/:reference/pieces-jointes', getPiecesJointesByReference);
 router.get('/public/:reference', getDoleanceByReference);
 router.get('/public/citoyen/:identifiant/doleances', getDoleancesByCitizenId);

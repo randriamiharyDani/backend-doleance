@@ -81,7 +81,11 @@ const getDashboardStats = async (req, res) => {
     );
 
     const calcChange = (current, previous) => {
-      if (!previous || previous === 0) return { value: null, type: 'up' };
+      if (!previous || previous === 0) {
+        return current && current > 0
+          ? { value: 'Nouveau', type: 'up' }
+          : { value: null, type: 'up' };
+      }
       const pct = ((current - previous) / previous * 100);
       return {
         value: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,

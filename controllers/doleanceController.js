@@ -179,6 +179,22 @@ const getSuggestions = async (req, res) => {
   }
 };
 
+// ========== VÉRIFIER LA DISPONIBILITÉ D'UNE RÉFÉRENCE ==========
+const checkReferenceAvailability = async (req, res) => {
+  try {
+    const reference = String(req.params.reference || '').trim();
+    if (!reference) {
+      return res.status(400).json({ success: false, message: 'Référence requise' });
+    }
+    const rows = await referenceModel.findByReference(reference);
+    const exists = rows.length > 0;
+    res.json({ success: true, available: !exists, exists });
+  } catch (error) {
+    console.error('Check reference error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ========== RÉCUPÉRER TOUTES LES DOLÉANCES (PUBLIC) ==========
 const getDoleancesPublic = async (req, res) => {
   try {
@@ -585,7 +601,8 @@ const createDoleance = async (req, res) => {
       identifiant_citoyen,
       nom_citoyen, prenom_citoyen, telephone_citoyen, email_citoyen, adresse_citoyen,
       titre, description, id_categorie, quartier,
-      latitude, longitude, lieu_exact, suggestions, module
+      latitude, longitude, lieu_exact, suggestions, module,
+      reference: manualReference
     } = req.body;
 
     if (!nom_citoyen || !prenom_citoyen || !titre || !description || !id_categorie) {
@@ -619,7 +636,35 @@ const createDoleance = async (req, res) => {
         });
       }
 
-      const reference = doleanceModel.generateReference();
+      let reference;
+      if (manualReference && manualReference.trim()) {
+        reference = manualReference.trim();
+        if (reference.length > 50) {
+          await connection.rollback();
+          return res.status(400).json({ success: false, message: 'La référence ne doit pas dépasser 50 caractères' });
+        }
+        const existingRef = await referenceModel.findByReference(reference);
+        if (existingRef.length > 0) {
+          await connection.rollback();
+          return res.status(409).json({
+            success: false,
+            message: `La référence "${reference}" existe déjà. Veuillez en choisir une autre.`
+          });
+        }
+      } else {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const candidate = doleanceModel.generateReference();
+          const existingRef = await referenceModel.findByReference(candidate);
+          if (existingRef.length === 0) {
+            reference = candidate;
+            break;
+          }
+        }
+        if (!reference) {
+          await connection.rollback();
+          return res.status(500).json({ success: false, message: 'Impossible de générer une référence unique. Veuillez réessayer.' });
+        }
+      }
       const isSapeursPompiers = module === 'Sapeurs-Pompiers';
       const defaultStatut = 1;
       const defaultPriorite = isSapeursPompiers ? 4 : 2;
@@ -661,6 +706,9 @@ const createDoleance = async (req, res) => {
     }
   } catch (error) {
     console.error('Create doleance error:', error);
+    if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+      return res.status(409).json({ success: false, message: 'Cette référence existe déjà. Veuillez en choisir une autre.' });
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -1259,6 +1307,7 @@ const retournerDoleance = async (req, res) => {
 // ========== EXPORTS ==========
 module.exports = {
   createDoleance,
+  checkReferenceAvailability,
   getDoleances,
   getDoleancesBackoffice,
   getDoleancesAssignedLocations,
