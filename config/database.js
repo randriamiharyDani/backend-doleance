@@ -205,6 +205,14 @@ const insertInitialData = async () => {
       ('instagram', '')
     `).catch(() => {});
 
+    // Numéros verts du footer public (modifiables depuis l'espace admin)
+    await promisePool.execute(`
+      INSERT IGNORE INTO parametres_site (cle, valeur) VALUES
+      ('greenNumberCua', '147'),
+      ('greenNumberTelma', '+26134222111'),
+      ('greenNumberOrange', '+2613211332')
+    `).catch(() => {});
+
     
     console.log('✅ Données initiales insérées avec succès');
   } catch (error) {

@@ -12,10 +12,12 @@ async function getSiteSettings() {
   );
   const [params] = await pool.execute('SELECT cle, valeur FROM parametres_site');
   const socials = { whatsapp: '', facebook: '', instagram: '' };
+  const greenNumbers = { greenNumberCua: '', greenNumberTelma: '', greenNumberOrange: '' };
   for (const row of params) {
     if (row.cle in socials) socials[row.cle] = row.valeur || '';
+    if (row.cle in greenNumbers) greenNumbers[row.cle] = row.valeur || '';
   }
-  return { contacts, socials };
+  return { contacts, socials, greenNumbers };
 }
 
 // ==================== PUBLIC ====================
@@ -82,6 +84,36 @@ router.put('/socials', protect, isAdmin, async (req, res) => {
     return res.json({ success: true, message: 'Réseaux sociaux mis à jour', data });
   } catch (error) {
     console.error('Erreur PUT /site-settings/socials:', error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Mise à jour des numéros verts du footer public
+// Body accepté (partiel possible) : { greenNumberCua, greenNumberTelma, greenNumberOrange }
+router.put('/green-numbers', protect, isAdmin, async (req, res) => {
+  try {
+    const allowed = ['greenNumberCua', 'greenNumberTelma', 'greenNumberOrange'];
+    let updated = false;
+
+    for (const cle of allowed) {
+      if (!(cle in req.body)) continue;
+      const valeur = typeof req.body[cle] === 'string' ? req.body[cle].trim() : '';
+      await pool.execute(
+        `INSERT INTO parametres_site (cle, valeur) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE valeur = VALUES(valeur)`,
+        [cle, valeur]
+      );
+      updated = true;
+    }
+
+    if (!updated) {
+      return res.status(400).json({ success: false, message: 'Aucun paramètre fourni (greenNumberCua, greenNumberTelma, greenNumberOrange)' });
+    }
+
+    const data = await getSiteSettings();
+    return res.json({ success: true, message: 'Numéros verts mis à jour', data });
+  } catch (error) {
+    console.error('Erreur PUT /site-settings/green-numbers:', error);
     return res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
