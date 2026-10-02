@@ -209,8 +209,7 @@ const insertInitialData = async () => {
     await promisePool.execute(`
       INSERT IGNORE INTO parametres_site (cle, valeur) VALUES
       ('greenNumberCua', '147'),
-      ('greenNumberTelma', '+26134222111'),
-      ('greenNumberOrange', '+2613211332')
+      ('greenNumberOrange', '+261323211332')
     `).catch(() => {});
 
     
