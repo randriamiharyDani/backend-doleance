@@ -1,8 +1,11 @@
 const mysql = require('mysql2');
 const dotenv = require('dotenv');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 
-dotenv.config();
+// Chemin absolu : le .env est trouve meme si le processus est lance
+// depuis un autre repertoire (PM2, service Windows/NSSM, systemd...).
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',

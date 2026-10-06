@@ -10,12 +10,18 @@ const http = require('http');
 const crypto = require('crypto');
 const { Server } = require('socket.io');
 
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const { pool } = require('./config/database');
 const citoyenCallService = require('./services/citoyenCallService');
 
 const app = express();
+
+// Derriere un reverse-proxy Apache : indispensable pour que req.ip,
+// req.protocol et req.hostname reflètent la requete publique
+// (generation des URLs /uploads, rate-limiting par IP reelle).
+// 1 = exactement un proxy de confiance (evite le mode permissif "true").
+app.set('trust proxy', 1);
 // HTTP simple (HTTPS/mkcert retiré)
 const server = http.createServer(app);
 // const fs = require('fs');
@@ -26,10 +32,27 @@ const server = http.createServer(app);
 
 const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 
+// Origine CORS effective.
+// - development : comportement inchangé (toutes origines autorisées).
+// - production   : liste blanche CORS_ORIGINS.
+// Filet de sécurité : si CORS_ORIGINS est vide ou mal formé, le middleware
+// cors recevrait un tableau vide et BLOQUERait toutes les requêtes
+// (aucun header Access-Control-Allow-Origin => application inutilisable).
+// On retombe alors sur "toutes origines autorisées" avec un avertissement
+// explicite, plutôt que de laisser l'API entièrement inaccessible.
+const corsOriginOption = (() => {
+  if (process.env.NODE_ENV === 'development') return true;
+  if (corsOrigins.length) return corsOrigins;
+
+  console.warn('⚠️  CORS_ORIGINS vide ou invalide : toutes les origines sont autorisées.');
+  console.warn('⚠️  Renseignez CORS_ORIGINS dans backend/.env (une seule ligne, séparée par des virgules).');
+  return true;
+})();
+
 // Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: corsOrigins,
+    origin: corsOriginOption,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true
   }
@@ -76,9 +99,7 @@ io.use((socket, next) => {
 
 app.use(
   cors({
-    origin: process.env.NODE_ENV === 'development'
-      ? true
-      : corsOrigins,
+    origin: corsOriginOption,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
