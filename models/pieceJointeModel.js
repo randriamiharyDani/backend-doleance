@@ -95,10 +95,15 @@ const deleteByDoleanceId = async (id_doleance) => {
 
 const buildFileUrls = (pieces, req) => {
   if (!pieces || !Array.isArray(pieces) || pieces.length === 0) return [];
-  const baseUrl = process.env.BASE_URL || `${req?.protocol}://${req?.get('host')}`;
+  // Base publique des images. En production derrière Apache, /api est déjà
+  // proxifié vers Node : on sert donc les fichiers sous /api/uploads pour
+  // éviter un 404 si /uploads n'est pas routé. Surchargeable via .env
+  // (UPLOADS_BASE_URL = URL complète, ex: https://webapp.cua.mg/doleance).
+  const origin = process.env.BASE_URL || `${req?.protocol}://${req?.get('host')}`;
+  const baseUrl = process.env.UPLOADS_BASE_URL || `${origin}${process.env.UPLOADS_PATH || '/api/uploads'}`;
   return pieces.map(piece => ({
     ...piece,
-    url: `${baseUrl}/uploads/doleances/${piece.nom_fichier}`
+    url: `${baseUrl}/doleances/${piece.nom_fichier}`
   }));
 };
 

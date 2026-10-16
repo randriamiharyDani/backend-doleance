@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS parametres_site (
 );
 
 INSERT IGNORE INTO contacts_urgence (code, libelle, telephone, ordre) VALUES
-  ('CUA', 'CUA', '034 72 139 93', 1),
+  ('CUA', 'Doléance', '034 72 139 93', 1),
   ('SAPEURS_POMPIERS', 'Sapeurs Pompiers', '034 12 232 35', 2),
   ('POLICE_MUNICIPALE', 'Police Municipale', '034 58 694 10', 3),
   ('BMH', 'BMH', '032 22 655 25', 4);

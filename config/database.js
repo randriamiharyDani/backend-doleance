@@ -194,7 +194,7 @@ const insertInitialData = async () => {
     // Insertion des contacts d'urgence par défaut (INSERT IGNORE : n'écrase jamais les valeurs modifiées)
     await promisePool.execute(`
       INSERT IGNORE INTO contacts_urgence (code, libelle, telephone, ordre) VALUES
-      ('CUA', 'CUA', '034 72 139 93', 1),
+      ('CUA', 'Doléance', '034 72 139 93', 1),
       ('SAPEURS_POMPIERS', 'Sapeurs Pompiers', '034 12 232 35', 2),
       ('POLICE_MUNICIPALE', 'Police Municipale', '034 58 694 10', 3),
       ('BMH', 'BMH', '032 22 655 25', 4)
@@ -209,10 +209,14 @@ const insertInitialData = async () => {
     `).catch(() => {});
 
     // Numéros verts du footer public (modifiables depuis l'espace admin)
+    // ON DUPLICATE : ne remplit que les valeurs vides, sans écraser celles
+    // déjà personnalisées par un administrateur.
     await promisePool.execute(`
-      INSERT IGNORE INTO parametres_site (cle, valeur) VALUES
+      INSERT INTO parametres_site (cle, valeur) VALUES
       ('greenNumberCua', '147'),
+      ('greenNumberTelma', '0323203232'),
       ('greenNumberOrange', '+261323211332')
+      ON DUPLICATE KEY UPDATE valeur = IF(valeur IS NULL OR valeur = '', VALUES(valeur), valeur)
     `).catch(() => {});
 
     
@@ -509,6 +513,12 @@ const createTables = async () => {
       cle VARCHAR(50) PRIMARY KEY,
       valeur TEXT NULL,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS mots_interdits (
+      id_mot INT PRIMARY KEY AUTO_INCREMENT,
+      mot VARCHAR(100) NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`
   ];
   
@@ -572,6 +582,24 @@ const runMigrations = async () => {
     }
   } catch (err) {
     console.warn('⚠️ Migration pieces_jointes type_fichier:', err.message);
+  }
+  // Rendre les anciennes colonnes tolérantes : le code n'insère plus que chemin/type_fichier,
+  // donc les colonnes héritées NOT NULL sans valeur par défaut font échouer l'INSERT.
+  try {
+    const [oldChemin] = await promisePool.execute(`SHOW COLUMNS FROM pieces_jointes LIKE 'chemin_fichier'`);
+    if (oldChemin.length > 0 && oldChemin[0].Null === 'NO') {
+      await promisePool.execute(`ALTER TABLE pieces_jointes MODIFY COLUMN chemin_fichier VARCHAR(500) NULL`).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('⚠️ Migration pieces_jointes chemin_fichier nullable:', err.message);
+  }
+  try {
+    const [oldType] = await promisePool.execute(`SHOW COLUMNS FROM pieces_jointes LIKE 'type'`);
+    if (oldType.length > 0 && oldType[0].Null === 'NO') {
+      await promisePool.execute(`ALTER TABLE pieces_jointes MODIFY COLUMN type ENUM('image','video','pdf') NULL`).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('⚠️ Migration pieces_jointes type nullable:', err.message);
   }
 
   // Création de la table password_reset_tokens

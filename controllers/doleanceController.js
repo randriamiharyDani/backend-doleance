@@ -458,11 +458,7 @@ const getDoleanceByReference = async (req, res) => {
       console.error('❌ Erreur Promises:', subError.message);
     }
 
-    const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
-    const piecesWithUrl = (piecesJointes || []).map(piece => ({
-      ...piece,
-      url: `${baseUrl}/uploads/doleances/${piece.nom_fichier || ''}`
-    }));
+    const piecesWithUrl = pieceJointeModel.buildFileUrls(piecesJointes, req);
 
     res.json({
       success: true,

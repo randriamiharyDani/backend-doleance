@@ -159,7 +159,23 @@ const listBackoffice = async ({ page = 1, limit = 10, categorie, statut, priorit
            ct.adresse as citoyen_adresse,
            dir.nom_direction,
            d.quartier as nom_quartier,
-           lt.motif as motif_transfert, lt.date_transfert
+           lt.motif as motif_transfert, lt.date_transfert,
+           IF(EXISTS (
+             SELECT 1 FROM mots_interdits mi
+             WHERE mi.mot <> ''
+               AND (
+                 LOCATE(mi.mot, d.titre) > 0
+                 OR (d.description IS NOT NULL AND LOCATE(mi.mot, d.description) > 0)
+               )
+           ), 1, 0) AS gros_mot_detecte,
+           (SELECT GROUP_CONCAT(mi.mot SEPARATOR 0x01)
+            FROM mots_interdits mi
+            WHERE mi.mot <> ''
+              AND (
+                LOCATE(mi.mot, d.titre) > 0
+                OR (d.description IS NOT NULL AND LOCATE(mi.mot, d.description) > 0)
+              )
+           ) AS mots_detectes
     FROM doleances d
     LEFT JOIN statuts s ON d.id_statut = s.id_statut
     LEFT JOIN priorites p ON d.id_priorite = p.id_priorite

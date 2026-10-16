@@ -135,7 +135,11 @@ const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
   message: 'Trop de requêtes, veuillez réessayer plus tard.',
-  skip: () => process.env.NODE_ENV === 'development'
+  // Ne jamais limiter le téléchargement des fichiers uploadés (images,
+  // PDF, vidéos) : une page peut en afficher plusieurs d'un coup.
+  skip: (req) =>
+    process.env.NODE_ENV === 'development' ||
+    (req.originalUrl || '').includes('/uploads/')
 });
 
 app.use('/api', limiter);
@@ -152,11 +156,14 @@ app.use(
   })
 );
 
-// Servir les fichiers uploadés
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'uploads'))
-);
+// Servir les fichiers uploadés.
+// Le backend génère les URLs des pièces jointes sous /api/uploads
+// (voir pieceJointeModel.buildFileUrls) : on sert donc AUSSI ce préfixe,
+// sinon la requête tombe dans les routes API protégées et renvoie 401
+// (les images ne s'affichent pas).
+const uploadsDir = path.join(__dirname, 'uploads');
+app.use('/uploads', express.static(uploadsDir));
+app.use('/api/uploads', express.static(uploadsDir));
 
 // ================================
 // Health Check
@@ -191,6 +198,7 @@ const globalRoutes = require('./routes/globalRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const citoyenCallRoutes = require('./routes/citoyenCallRoutes');
 const siteSettingsRoutes = require('./routes/siteSettingsRoutes');
+const motsInterditsRoutes = require('./routes/motsInterditsRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/doleances', doleanceRoutes);
@@ -205,6 +213,7 @@ app.use('/api/corbeille', corbeilleRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/citoyen-call', citoyenCallRoutes);
 app.use('/api/site-settings', siteSettingsRoutes);
+app.use('/api/mots-interdits', motsInterditsRoutes);
 app.use('/api', globalRoutes);
 
 // ================================
